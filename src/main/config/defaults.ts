@@ -13,10 +13,12 @@ export const DEFAULT_AGENTS: Record<string, AgentConfig> = {
   },
   codex: {
     id: 'codex',
-    name: 'Codex CLI',
-    command: 'codex',
-    args: ['--acp'],
+    name: 'Codex CLI (ACP)',
+    command: 'codex-acp',
+    args: [],
     enabled: true,
+    // Note: Uses https://github.com/zed-industries/codex-acp
+    // Official Codex CLI doesn't support ACP
   },
   gemini: {
     id: 'gemini',

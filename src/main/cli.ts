@@ -99,6 +99,10 @@ async function main() {
     })
   }
 
+  // Track current session for cancellation
+  let currentSessionId: string | null = null
+  let isCancelling = false
+
   const conductor = new Conductor({
     onSessionUpdate: (params) => {
       // Log the raw update for debugging
@@ -202,6 +206,39 @@ async function main() {
     },
   })
 
+  // Handle Ctrl+C gracefully - send cancel request to agent
+  const handleSigint = async () => {
+    if (isCancelling) {
+      console.log('\n⚠️  Force quit...')
+      process.exit(1)
+    }
+
+    isCancelling = true
+    console.log('\n\n🛑 Cancelling request...')
+
+    if (currentSessionId) {
+      try {
+        await conductor.cancelRequest(currentSessionId)
+        console.log('✓ Cancel request sent to agent')
+      } catch (err) {
+        console.error('Failed to send cancel:', err)
+      }
+    }
+
+    // Save log before exit
+    if (logFile && sessionLog.length > 0) {
+      writeFileSync(logFile, JSON.stringify(sessionLog, null, 2))
+      console.log(`📄 Session log saved to: ${logFile}`)
+    }
+
+    await conductor.stopAgent()
+    process.exit(0)
+  }
+
+  process.on('SIGINT', () => {
+    handleSigint().catch(console.error)
+  })
+
   try {
     // Start the agent
     await conductor.startAgent(agentConfig)
@@ -209,6 +246,7 @@ async function main() {
     // Create a session with specified working directory
     console.log(`📁 Working directory: ${cwd}`)
     const session = await conductor.createSession(cwd)
+    currentSessionId = session.id
     console.log(`📝 Session: ${session.id}`)
 
     // Send the prompt
