@@ -4,6 +4,15 @@
 import type { AgentConfig, AppConfig } from '../../shared/types'
 
 export const DEFAULT_AGENTS: Record<string, AgentConfig> = {
+  'claude-code': {
+    id: 'claude-code',
+    name: 'Claude Code',
+    command: 'claude-code-acp',
+    args: [],
+    enabled: true,
+    // Note: Uses https://github.com/zed-industries/claude-code-acp
+    // Requires ANTHROPIC_API_KEY environment variable
+  },
   opencode: {
     id: 'opencode',
     name: 'OpenCode',

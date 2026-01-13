@@ -15,10 +15,10 @@ interface SettingsProps {
 
 // Agent icons mapping
 const AGENT_ICONS: Record<string, string> = {
+  'claude-code': '◉',
   opencode: '⌘',
   codex: '◈',
   gemini: '✦',
-  claude: '◉',
 }
 
 type ThemeMode = 'light' | 'dark' | 'system'
@@ -281,10 +281,10 @@ function AgentCard({ agent, isSelected, onSelect }: AgentCardProps) {
 
 function getAgentDescription(agentId: string): string {
   const descriptions: Record<string, string> = {
+    'claude-code': 'Anthropic\'s Claude Code via ACP',
     opencode: 'Terminal-based coding assistant',
-    codex: 'OpenAI\'s coding agent CLI',
+    codex: 'OpenAI\'s Codex CLI via ACP',
     gemini: 'Google\'s Gemini CLI agent',
-    claude: 'Anthropic\'s Claude CLI',
   }
   return descriptions[agentId] || 'Coding assistant'
 }
