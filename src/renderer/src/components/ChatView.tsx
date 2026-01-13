@@ -87,8 +87,12 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
   const toolCallMap = new Map<string, ToolCall>()
 
   for (const stored of updates) {
-    const update = stored.update.update
-    if (!update || !('sessionUpdate' in update)) continue
+    // The stored.update is SessionNotification which has { sessionId, update }
+    const notification = stored.update
+    const update = notification?.update
+    if (!update || !('sessionUpdate' in update)) {
+      continue
+    }
 
     switch (update.sessionUpdate) {
       case 'user_message' as string:
@@ -117,9 +121,14 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
         break
 
       case 'agent_message_chunk':
+        // APPEND chunks instead of replacing
         if ('content' in update && update.content?.type === 'text') {
-          currentAssistantContent = update.content.text
+          currentAssistantContent += update.content.text
         }
+        break
+
+      case 'agent_thought_chunk':
+        // Skip thought chunks for now (could show them differently)
         break
 
       case 'tool_call':
@@ -131,7 +140,7 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
             kind: update.kind,
             input: typeof update.rawInput === 'string'
               ? update.rawInput
-              : update.rawInput
+              : update.rawInput && Object.keys(update.rawInput).length > 0
                 ? JSON.stringify(update.rawInput, null, 2)
                 : undefined,
           }
@@ -141,13 +150,36 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
         break
 
       case 'tool_call_update':
-        if ('toolCallId' in update && toolCallMap.has(update.toolCallId)) {
-          const existing = toolCallMap.get(update.toolCallId)!
-          if (update.status) existing.status = update.status
-          if (update.rawOutput) {
-            existing.output = typeof update.rawOutput === 'string'
-              ? update.rawOutput
-              : JSON.stringify(update.rawOutput, null, 2)
+        if ('toolCallId' in update) {
+          // Get or create the tool call entry
+          const existingTool = toolCallMap.get(update.toolCallId)
+          if (existingTool) {
+            if (update.status) existingTool.status = update.status
+            if (update.title) existingTool.title = update.title
+            if (update.rawInput && Object.keys(update.rawInput).length > 0) {
+              existingTool.input = typeof update.rawInput === 'string'
+                ? update.rawInput
+                : JSON.stringify(update.rawInput, null, 2)
+            }
+            if (update.rawOutput) {
+              existingTool.output = typeof update.rawOutput === 'string'
+                ? update.rawOutput
+                : JSON.stringify(update.rawOutput, null, 2)
+            }
+          } else {
+            // Create new entry if we see update before the initial tool_call
+            const newTool: ToolCall = {
+              id: update.toolCallId,
+              title: update.title || 'Tool Call',
+              status: update.status || 'pending',
+              kind: update.kind ?? undefined,
+            }
+            if (update.rawInput && Object.keys(update.rawInput).length > 0) {
+              newTool.input = typeof update.rawInput === 'string'
+                ? update.rawInput
+                : JSON.stringify(update.rawInput, null, 2)
+            }
+            toolCallMap.set(update.toolCallId, newTool)
           }
           currentToolCalls = Array.from(toolCallMap.values())
         }
@@ -159,7 +191,7 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
   if (currentAssistantContent || currentToolCalls.length > 0) {
     messages.push({
       role: 'assistant',
-      content: currentAssistantContent,
+      content: currentAssistantContent.trim(),
       toolCalls: currentToolCalls,
     })
   }

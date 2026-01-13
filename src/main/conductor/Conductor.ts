@@ -247,6 +247,18 @@ export class Conductor {
     console.log(`[Conductor] Sending prompt to session ${agentSessionId}`)
     console.log(`[Conductor]   Content: ${content.slice(0, 100)}${content.length > 100 ? '...' : ''}`)
 
+    // Store user message before sending (so it appears in history)
+    if (this.sessionStore && this.activeSessionId) {
+      const userUpdate = {
+        sessionId: agentSessionId,
+        update: {
+          sessionUpdate: 'user_message',
+          content: { type: 'text', text: content },
+        },
+      }
+      await this.sessionStore.appendUpdate(this.activeSessionId, userUpdate as any)
+    }
+
     const result = await this.connection.prompt({
       sessionId: agentSessionId,
       prompt: [{ type: 'text', text: content }],
