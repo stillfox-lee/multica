@@ -104,7 +104,9 @@ async function main() {
   let isCancelling = false
 
   const conductor = new Conductor({
-    onSessionUpdate: (params) => {
+    skipPersistence: true, // CLI mode: don't persist sessions
+    events: {
+      onSessionUpdate: (params) => {
       // Log the raw update for debugging
       log('session_update', params)
 
@@ -203,6 +205,7 @@ async function main() {
           // Ignore other update types
           break
       }
+      },
     },
   })
 

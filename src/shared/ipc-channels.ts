@@ -6,14 +6,19 @@ export const IPC_CHANNELS = {
   AGENT_PROMPT: 'agent:prompt',
   AGENT_CANCEL: 'agent:cancel',
   AGENT_SWITCH: 'agent:switch',
+  AGENT_START: 'agent:start',
+  AGENT_STOP: 'agent:stop',
   AGENT_MESSAGE: 'agent:message',
   AGENT_ERROR: 'agent:error',
   AGENT_STATUS: 'agent:status',
 
   // Session management
   SESSION_CREATE: 'session:create',
-  SESSION_CLOSE: 'session:close',
   SESSION_LIST: 'session:list',
+  SESSION_GET: 'session:get',
+  SESSION_RESUME: 'session:resume',
+  SESSION_DELETE: 'session:delete',
+  SESSION_UPDATE: 'session:update',
 
   // Configuration
   CONFIG_GET: 'config:get',

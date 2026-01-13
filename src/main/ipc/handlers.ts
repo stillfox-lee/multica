@@ -4,56 +4,96 @@
  */
 import { ipcMain } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
+import { DEFAULT_AGENTS } from '../config/defaults'
+import type { Conductor } from '../conductor/Conductor'
+import type { ListSessionsOptions, MulticaSession } from '../../shared/types'
 
-export function registerIPCHandlers(): void {
-  // Agent communication handlers
-  ipcMain.handle(IPC_CHANNELS.AGENT_PROMPT, async (_event, sessionId: string, content: string) => {
-    // TODO: Implement agent prompt handling
-    console.log(`[IPC] agent:prompt - sessionId: ${sessionId}, content: ${content}`)
+export function registerIPCHandlers(conductor: Conductor): void {
+  // --- Agent handlers ---
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_START, async (_event, agentId: string) => {
+    const config = DEFAULT_AGENTS[agentId]
+    if (!config) {
+      throw new Error(`Unknown agent: ${agentId}`)
+    }
+    await conductor.startAgent(config)
+    return { success: true, agentId }
   })
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_CANCEL, async (_event, sessionId: string) => {
-    // TODO: Implement request cancellation
-    console.log(`[IPC] agent:cancel - sessionId: ${sessionId}`)
+  ipcMain.handle(IPC_CHANNELS.AGENT_STOP, async () => {
+    await conductor.stopAgent()
+    return { success: true }
   })
 
   ipcMain.handle(IPC_CHANNELS.AGENT_SWITCH, async (_event, agentId: string) => {
-    // TODO: Implement agent switching
-    console.log(`[IPC] agent:switch - agentId: ${agentId}`)
+    const config = DEFAULT_AGENTS[agentId]
+    if (!config) {
+      throw new Error(`Unknown agent: ${agentId}`)
+    }
+    await conductor.startAgent(config)
+    return { success: true, agentId }
   })
 
-  // Session management handlers
-  ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, workingDirectory: string) => {
-    // TODO: Implement session creation
-    console.log(`[IPC] session:create - workingDirectory: ${workingDirectory}`)
+  ipcMain.handle(IPC_CHANNELS.AGENT_PROMPT, async (_event, sessionId: string, content: string) => {
+    const stopReason = await conductor.sendPrompt(sessionId, content)
+    return { stopReason }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_CANCEL, async (_event, sessionId: string) => {
+    await conductor.cancelRequest(sessionId)
+    return { success: true }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_STATUS, async () => {
+    const agent = conductor.getCurrentAgent()
+    const isRunning = conductor.isAgentRunning()
+    if (!isRunning || !agent) {
+      return { state: 'stopped' }
+    }
     return {
-      id: `session_${Date.now()}`,
-      workingDirectory,
-      agentId: 'default',
-      createdAt: new Date().toISOString(),
-      isActive: true,
+      state: 'running',
+      agentId: agent.id,
+      agentName: agent.name,
     }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SESSION_CLOSE, async (_event, sessionId: string) => {
-    // TODO: Implement session closing
-    console.log(`[IPC] session:close - sessionId: ${sessionId}`)
+  // --- Session handlers ---
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_CREATE, async (_event, workingDirectory: string) => {
+    return conductor.createSession(workingDirectory)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async () => {
-    // TODO: Implement session listing
-    console.log(`[IPC] session:list`)
-    return []
+  ipcMain.handle(IPC_CHANNELS.SESSION_LIST, async (_event, options?: ListSessionsOptions) => {
+    return conductor.listSessions(options)
   })
 
-  // Configuration handlers
+  ipcMain.handle(IPC_CHANNELS.SESSION_GET, async (_event, sessionId: string) => {
+    return conductor.getSessionData(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_RESUME, async (_event, sessionId: string) => {
+    return conductor.resumeSession(sessionId)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, sessionId: string) => {
+    await conductor.deleteSession(sessionId)
+    return { success: true }
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.SESSION_UPDATE,
+    async (_event, sessionId: string, updates: Partial<MulticaSession>) => {
+      return conductor.updateSessionMeta(sessionId, updates)
+    }
+  )
+
+  // --- Configuration handlers ---
+
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async () => {
-    // TODO: Implement config retrieval
-    console.log(`[IPC] config:get`)
     return {
       version: '0.1.0',
-      activeAgentId: 'opencode',
-      agents: {},
+      activeAgentId: conductor.getCurrentAgent()?.id ?? 'opencode',
+      agents: DEFAULT_AGENTS,
       ui: {
         theme: 'system',
         fontSize: 14,
@@ -62,7 +102,7 @@ export function registerIPCHandlers(): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_UPDATE, async (_event, config: unknown) => {
-    // TODO: Implement config update
+    // TODO: Implement config persistence
     console.log(`[IPC] config:update`, config)
     return config
   })

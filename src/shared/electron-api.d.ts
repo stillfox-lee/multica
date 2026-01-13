@@ -1,7 +1,13 @@
 /**
  * Type declarations for the Electron API exposed to the renderer process
  */
-import type { AgentStatus, AppConfig, SessionInfo } from './types'
+import type {
+  AgentStatus,
+  AppConfig,
+  MulticaSession,
+  SessionData,
+  ListSessionsOptions,
+} from './types'
 
 export interface AgentMessage {
   sessionId: string
@@ -10,15 +16,23 @@ export interface AgentMessage {
 }
 
 export interface ElectronAPI {
+  // Agent lifecycle
+  startAgent(agentId: string): Promise<{ success: boolean; agentId: string }>
+  stopAgent(): Promise<{ success: boolean }>
+  switchAgent(agentId: string): Promise<{ success: boolean; agentId: string }>
+  getAgentStatus(): Promise<AgentStatus>
+
   // Agent communication
-  sendPrompt(sessionId: string, content: string): Promise<void>
-  cancelRequest(sessionId: string): Promise<void>
-  switchAgent(agentId: string): Promise<void>
+  sendPrompt(sessionId: string, content: string): Promise<{ stopReason: string }>
+  cancelRequest(sessionId: string): Promise<{ success: boolean }>
 
   // Session management
-  createSession(workingDirectory: string): Promise<SessionInfo>
-  closeSession(sessionId: string): Promise<void>
-  listSessions(): Promise<SessionInfo[]>
+  createSession(workingDirectory: string): Promise<MulticaSession>
+  listSessions(options?: ListSessionsOptions): Promise<MulticaSession[]>
+  getSession(sessionId: string): Promise<SessionData | null>
+  resumeSession(sessionId: string): Promise<MulticaSession>
+  deleteSession(sessionId: string): Promise<{ success: boolean }>
+  updateSession(sessionId: string, updates: Partial<MulticaSession>): Promise<MulticaSession>
 
   // Configuration
   getConfig(): Promise<AppConfig>

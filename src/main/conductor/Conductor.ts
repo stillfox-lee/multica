@@ -11,7 +11,14 @@ import {
   type RequestPermissionResponse,
 } from '@agentclientprotocol/sdk'
 import { AgentProcess } from './AgentProcess'
-import type { AgentConfig, SessionInfo } from '../../shared/types'
+import { SessionStore } from '../session/SessionStore'
+import { DEFAULT_AGENTS } from '../config/defaults'
+import type {
+  AgentConfig,
+  MulticaSession,
+  SessionData,
+  ListSessionsOptions,
+} from '../../shared/types'
 
 export interface SessionUpdateCallback {
   (update: SessionNotification): void
@@ -24,15 +31,42 @@ export interface ConductorEvents {
   ) => Promise<RequestPermissionResponse>
 }
 
+export interface ConductorOptions {
+  events?: ConductorEvents
+  /** Skip session persistence (for CLI mode) */
+  skipPersistence?: boolean
+  /** Custom storage path for sessions */
+  storagePath?: string
+}
+
 export class Conductor {
   private agentProcess: AgentProcess | null = null
   private connection: ClientSideConnection | null = null
   private currentAgentConfig: AgentConfig | null = null
-  private sessions: Map<string, SessionInfo> = new Map()
   private events: ConductorEvents
+  private sessionStore: SessionStore | null = null
+  private skipPersistence: boolean
 
-  constructor(events: ConductorEvents = {}) {
-    this.events = events
+  // Current active Multica session ID
+  private activeSessionId: string | null = null
+  // In-memory session for CLI mode (when persistence is skipped)
+  private inMemorySession: MulticaSession | null = null
+
+  constructor(options: ConductorOptions = {}) {
+    this.events = options.events ?? {}
+    this.skipPersistence = options.skipPersistence ?? false
+    if (!this.skipPersistence) {
+      this.sessionStore = new SessionStore(options.storagePath)
+    }
+  }
+
+  /**
+   * Initialize the conductor (must be called before use in GUI mode)
+   */
+  async initialize(): Promise<void> {
+    if (this.sessionStore) {
+      await this.sessionStore.initialize()
+    }
   }
 
   /**
@@ -53,10 +87,7 @@ export class Conductor {
     )
 
     // Create client-side connection with our Client implementation
-    this.connection = new ClientSideConnection(
-      (_agent) => this.createClient(),
-      stream
-    )
+    this.connection = new ClientSideConnection((_agent) => this.createClient(), stream)
 
     // Initialize the ACP connection
     const initResult = await this.connection.initialize({
@@ -71,9 +102,7 @@ export class Conductor {
       },
     })
 
-    console.log(
-      `[Conductor] Connected to ${config.name} (protocol v${initResult.protocolVersion})`
-    )
+    console.log(`[Conductor] Connected to ${config.name} (protocol v${initResult.protocolVersion})`)
     this.currentAgentConfig = config
 
     // Handle agent process exit
@@ -93,35 +122,95 @@ export class Conductor {
       this.agentProcess = null
       this.connection = null
       this.currentAgentConfig = null
-      this.sessions.clear()
+      this.activeSessionId = null
     }
   }
 
   /**
    * Create a new session with the agent
    */
-  async createSession(cwd: string): Promise<SessionInfo> {
+  async createSession(cwd: string): Promise<MulticaSession> {
     if (!this.connection || !this.currentAgentConfig) {
       throw new Error('No agent is running')
     }
 
+    // Create ACP session
     const result = await this.connection.newSession({
       cwd,
       mcpServers: [], // V2: support MCP servers
     })
 
-    const session: SessionInfo = {
-      id: result.sessionId,
-      workingDirectory: cwd,
-      agentId: this.currentAgentConfig.id,
-      createdAt: new Date().toISOString(),
-      isActive: true,
+    let session: MulticaSession
+
+    if (this.sessionStore) {
+      // Persist session
+      session = await this.sessionStore.create({
+        agentSessionId: result.sessionId,
+        agentId: this.currentAgentConfig.id,
+        workingDirectory: cwd,
+      })
+    } else {
+      // CLI mode: in-memory session
+      const { randomUUID } = await import('crypto')
+      const now = new Date().toISOString()
+      session = {
+        id: randomUUID(),
+        agentSessionId: result.sessionId,
+        agentId: this.currentAgentConfig.id,
+        workingDirectory: cwd,
+        createdAt: now,
+        updatedAt: now,
+        status: 'active',
+        messageCount: 0,
+      }
+      this.inMemorySession = session
     }
 
-    this.sessions.set(session.id, session)
-    console.log(`[Conductor] Created session: ${session.id}`)
+    this.activeSessionId = session.id
+    console.log(`[Conductor] Created session: ${session.id} (agent: ${result.sessionId})`)
 
     return session
+  }
+
+  /**
+   * Resume an existing session (for UI display only, agent state is not restored)
+   */
+  async resumeSession(sessionId: string): Promise<MulticaSession> {
+    if (!this.sessionStore) {
+      throw new Error('Session resumption not available in CLI mode')
+    }
+
+    const data = await this.sessionStore.get(sessionId)
+    if (!data) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
+
+    // Ensure agent is started
+    const agentConfig = DEFAULT_AGENTS[data.session.agentId]
+    if (!agentConfig) {
+      throw new Error(`Unknown agent: ${data.session.agentId}`)
+    }
+
+    if (!this.isAgentRunning() || this.currentAgentConfig?.id !== agentConfig.id) {
+      await this.startAgent(agentConfig)
+    }
+
+    // Create new ACP session (agent doesn't know about previous conversation)
+    const result = await this.connection!.newSession({
+      cwd: data.session.workingDirectory,
+      mcpServers: [],
+    })
+
+    // Update agentSessionId (new ACP session)
+    const updatedSession = await this.sessionStore.updateMeta(sessionId, {
+      agentSessionId: result.sessionId,
+      status: 'active',
+    })
+
+    this.activeSessionId = sessionId
+    console.log(`[Conductor] Resumed session: ${sessionId} (new agent session: ${result.sessionId})`)
+
+    return updatedSession
   }
 
   /**
@@ -132,13 +221,23 @@ export class Conductor {
       throw new Error('No agent is running')
     }
 
-    const session = this.sessions.get(sessionId)
-    if (!session) {
+    // Get agentSessionId
+    let agentSessionId: string
+
+    if (this.sessionStore) {
+      const data = await this.sessionStore.get(sessionId)
+      if (!data) {
+        throw new Error(`Session not found: ${sessionId}`)
+      }
+      agentSessionId = data.session.agentSessionId
+    } else if (this.inMemorySession && this.inMemorySession.id === sessionId) {
+      agentSessionId = this.inMemorySession.agentSessionId
+    } else {
       throw new Error(`Session not found: ${sessionId}`)
     }
 
     const result = await this.connection.prompt({
-      sessionId,
+      sessionId: agentSessionId,
       prompt: [{ type: 'text', text: content }],
     })
 
@@ -153,7 +252,69 @@ export class Conductor {
       return
     }
 
-    await this.connection.cancel({ sessionId })
+    // Get agentSessionId
+    let agentSessionId: string | null = null
+
+    if (this.sessionStore) {
+      const data = await this.sessionStore.get(sessionId)
+      if (data) {
+        agentSessionId = data.session.agentSessionId
+      }
+    } else if (this.inMemorySession && this.inMemorySession.id === sessionId) {
+      agentSessionId = this.inMemorySession.agentSessionId
+    }
+
+    if (agentSessionId) {
+      await this.connection.cancel({ sessionId: agentSessionId })
+    }
+  }
+
+  /**
+   * Get session list
+   */
+  async listSessions(options?: ListSessionsOptions): Promise<MulticaSession[]> {
+    if (!this.sessionStore) {
+      return this.inMemorySession ? [this.inMemorySession] : []
+    }
+    return this.sessionStore.list(options)
+  }
+
+  /**
+   * Get session complete data (including message history)
+   */
+  async getSessionData(sessionId: string): Promise<SessionData | null> {
+    if (!this.sessionStore) {
+      return null
+    }
+    return this.sessionStore.get(sessionId)
+  }
+
+  /**
+   * Delete a session
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    if (this.sessionStore) {
+      await this.sessionStore.delete(sessionId)
+    }
+    if (this.activeSessionId === sessionId) {
+      this.activeSessionId = null
+    }
+    if (this.inMemorySession?.id === sessionId) {
+      this.inMemorySession = null
+    }
+  }
+
+  /**
+   * Update session metadata
+   */
+  async updateSessionMeta(
+    sessionId: string,
+    updates: Partial<MulticaSession>
+  ): Promise<MulticaSession> {
+    if (!this.sessionStore) {
+      throw new Error('Session update not available in CLI mode')
+    }
+    return this.sessionStore.updateMeta(sessionId, updates)
   }
 
   /**
@@ -171,10 +332,10 @@ export class Conductor {
   }
 
   /**
-   * Get all sessions
+   * Get active session ID
    */
-  getSessions(): SessionInfo[] {
-    return Array.from(this.sessions.values())
+  getActiveSessionId(): string | null {
+    return this.activeSessionId
   }
 
   /**
@@ -184,6 +345,16 @@ export class Conductor {
     return {
       // Handle session updates from agent
       sessionUpdate: async (params: SessionNotification) => {
+        // Store raw update to SessionStore (if available)
+        if (this.activeSessionId && this.sessionStore) {
+          try {
+            await this.sessionStore.appendUpdate(this.activeSessionId, params)
+          } catch (err) {
+            console.error('[Conductor] Failed to store session update:', err)
+          }
+        }
+
+        // Trigger UI callback
         if (this.events.onSessionUpdate) {
           this.events.onSessionUpdate(params)
         }

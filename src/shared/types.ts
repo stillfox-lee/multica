@@ -78,3 +78,6 @@ export interface FileApprovalResponse {
   approved: boolean
   remember?: 'once' | 'session' | 'always'
 }
+
+// Re-export session types
+export * from './types/session'

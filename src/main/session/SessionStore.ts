@@ -1,0 +1,295 @@
+/**
+ * SessionStore - Manages session persistence
+ *
+ * Storage structure:
+ * ~/.multica/
+ *   └── sessions/
+ *       ├── index.json           # Session list index (fast load)
+ *       └── data/
+ *           ├── {session-id}.json  # Complete session data
+ *           └── ...
+ */
+import { app } from 'electron'
+import { join } from 'path'
+import { existsSync, mkdirSync } from 'fs'
+import { readFile, writeFile, unlink } from 'fs/promises'
+import { randomUUID } from 'crypto'
+import type { SessionNotification } from '@agentclientprotocol/sdk'
+import type {
+  MulticaSession,
+  SessionData,
+  StoredSessionUpdate,
+  CreateSessionParams,
+  ListSessionsOptions,
+} from '../../shared/types'
+
+export class SessionStore {
+  private basePath: string
+  private indexPath: string
+  private dataPath: string
+
+  // In-memory cache
+  private sessionsIndex: Map<string, MulticaSession> = new Map()
+  private loadedSessions: Map<string, SessionData> = new Map()
+
+  constructor(basePath?: string) {
+    this.basePath = basePath ?? join(app.getPath('userData'), 'sessions')
+    this.indexPath = join(this.basePath, 'index.json')
+    this.dataPath = join(this.basePath, 'data')
+  }
+
+  /**
+   * Initialize storage directories and load index
+   */
+  async initialize(): Promise<void> {
+    // Ensure directories exist
+    if (!existsSync(this.basePath)) {
+      mkdirSync(this.basePath, { recursive: true })
+    }
+    if (!existsSync(this.dataPath)) {
+      mkdirSync(this.dataPath, { recursive: true })
+    }
+
+    // Load index
+    await this.loadIndex()
+  }
+
+  /**
+   * Create a new session
+   */
+  async create(params: CreateSessionParams): Promise<MulticaSession> {
+    const now = new Date().toISOString()
+    const session: MulticaSession = {
+      id: randomUUID(),
+      agentSessionId: params.agentSessionId,
+      agentId: params.agentId,
+      workingDirectory: params.workingDirectory,
+      createdAt: now,
+      updatedAt: now,
+      status: 'active',
+      messageCount: 0,
+    }
+
+    // Add to index
+    this.sessionsIndex.set(session.id, session)
+
+    // Create session data
+    const sessionData: SessionData = {
+      session,
+      updates: [],
+    }
+    this.loadedSessions.set(session.id, sessionData)
+
+    // Persist
+    await this.saveIndex()
+    await this.saveSessionData(session.id)
+
+    return session
+  }
+
+  /**
+   * Get session list (from index, doesn't load full data)
+   */
+  async list(options?: ListSessionsOptions): Promise<MulticaSession[]> {
+    let sessions = Array.from(this.sessionsIndex.values())
+
+    // Filter by agent
+    if (options?.agentId) {
+      sessions = sessions.filter((s) => s.agentId === options.agentId)
+    }
+
+    // Filter by status
+    if (options?.status) {
+      sessions = sessions.filter((s) => s.status === options.status)
+    }
+
+    // Sort by updatedAt descending (most recent first)
+    sessions.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+
+    // Pagination
+    const offset = options?.offset ?? 0
+    const limit = options?.limit ?? sessions.length
+    sessions = sessions.slice(offset, offset + limit)
+
+    return sessions
+  }
+
+  /**
+   * Get a single session's complete data
+   */
+  async get(sessionId: string): Promise<SessionData | null> {
+    // Check cache first
+    if (this.loadedSessions.has(sessionId)) {
+      return this.loadedSessions.get(sessionId)!
+    }
+
+    // Check if session exists in index
+    if (!this.sessionsIndex.has(sessionId)) {
+      return null
+    }
+
+    // Load from disk
+    const dataPath = this.getSessionDataPath(sessionId)
+    if (!existsSync(dataPath)) {
+      return null
+    }
+
+    try {
+      const content = await readFile(dataPath, 'utf-8')
+      const sessionData = JSON.parse(content) as SessionData
+      this.loadedSessions.set(sessionId, sessionData)
+      return sessionData
+    } catch {
+      console.error(`[SessionStore] Failed to load session: ${sessionId}`)
+      return null
+    }
+  }
+
+  /**
+   * Append a session update
+   */
+  async appendUpdate(sessionId: string, update: SessionNotification): Promise<void> {
+    // Ensure session is loaded
+    let sessionData = await this.get(sessionId)
+    if (!sessionData) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
+
+    // Append update
+    const storedUpdate: StoredSessionUpdate = {
+      timestamp: new Date().toISOString(),
+      update,
+    }
+    sessionData.updates.push(storedUpdate)
+
+    // Update metadata
+    sessionData.session.updatedAt = storedUpdate.timestamp
+    sessionData.session.messageCount = this.countMessages(sessionData.updates)
+
+    // Update index
+    this.sessionsIndex.set(sessionId, sessionData.session)
+
+    // Persist (debounce in production, immediate for now)
+    await this.saveSessionData(sessionId)
+    await this.saveIndex()
+  }
+
+  /**
+   * Update session metadata
+   */
+  async updateMeta(sessionId: string, updates: Partial<MulticaSession>): Promise<MulticaSession> {
+    const sessionData = await this.get(sessionId)
+    if (!sessionData) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
+
+    // Apply updates (only allowed fields)
+    if (updates.title !== undefined) {
+      sessionData.session.title = updates.title
+    }
+    if (updates.status !== undefined) {
+      sessionData.session.status = updates.status
+    }
+    if (updates.agentSessionId !== undefined) {
+      sessionData.session.agentSessionId = updates.agentSessionId
+    }
+
+    // Update timestamp
+    sessionData.session.updatedAt = new Date().toISOString()
+
+    // Update index
+    this.sessionsIndex.set(sessionId, sessionData.session)
+
+    // Persist
+    await this.saveSessionData(sessionId)
+    await this.saveIndex()
+
+    return sessionData.session
+  }
+
+  /**
+   * Delete a session
+   */
+  async delete(sessionId: string): Promise<void> {
+    // Remove from index
+    this.sessionsIndex.delete(sessionId)
+
+    // Remove from cache
+    this.loadedSessions.delete(sessionId)
+
+    // Remove data file
+    const dataPath = this.getSessionDataPath(sessionId)
+    if (existsSync(dataPath)) {
+      await unlink(dataPath)
+    }
+
+    // Persist index
+    await this.saveIndex()
+  }
+
+  /**
+   * Get session by agent session ID
+   */
+  getByAgentSessionId(agentSessionId: string): MulticaSession | null {
+    for (const session of this.sessionsIndex.values()) {
+      if (session.agentSessionId === agentSessionId) {
+        return session
+      }
+    }
+    return null
+  }
+
+  // --- Private methods ---
+
+  private getSessionDataPath(sessionId: string): string {
+    return join(this.dataPath, `${sessionId}.json`)
+  }
+
+  private async loadIndex(): Promise<void> {
+    if (!existsSync(this.indexPath)) {
+      this.sessionsIndex = new Map()
+      return
+    }
+
+    try {
+      const content = await readFile(this.indexPath, 'utf-8')
+      const sessions = JSON.parse(content) as MulticaSession[]
+      this.sessionsIndex = new Map(sessions.map((s) => [s.id, s]))
+    } catch {
+      console.error('[SessionStore] Failed to load index, starting fresh')
+      this.sessionsIndex = new Map()
+    }
+  }
+
+  private async saveIndex(): Promise<void> {
+    const sessions = Array.from(this.sessionsIndex.values())
+    await writeFile(this.indexPath, JSON.stringify(sessions, null, 2))
+  }
+
+  private async saveSessionData(sessionId: string): Promise<void> {
+    const sessionData = this.loadedSessions.get(sessionId)
+    if (!sessionData) return
+
+    const dataPath = this.getSessionDataPath(sessionId)
+    await writeFile(dataPath, JSON.stringify(sessionData, null, 2))
+  }
+
+  private countMessages(updates: StoredSessionUpdate[]): number {
+    // Count content updates (simplified - could be more accurate)
+    let count = 0
+    for (const u of updates) {
+      const update = u.update.update
+      if (update && 'sessionUpdate' in update) {
+        // Count agent message chunks as messages
+        const sessionUpdateType = update.sessionUpdate
+        if (
+          sessionUpdateType === 'agent_message_chunk' ||
+          sessionUpdateType === 'user_message_chunk'
+        ) {
+          count++
+        }
+      }
+    }
+    return Math.max(1, Math.ceil(count / 10)) // Rough estimate
+  }
+}
