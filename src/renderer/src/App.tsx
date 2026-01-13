@@ -43,7 +43,7 @@ function App(): React.JSX.Element {
   }, [agentStatus.state, currentSession, sessions.length])
 
   const handleNewSession = () => {
-    setNewSessionCwd(process.cwd?.() || '')
+    setNewSessionCwd('')
     setShowNewSession(true)
   }
 
