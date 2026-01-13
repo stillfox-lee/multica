@@ -66,14 +66,19 @@ export class AgentProcess {
       return
     }
 
+    const pid = this.process.pid
+    console.log(`[AgentProcess] Stopping process (pid: ${pid})`)
+
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         // Force kill if graceful shutdown takes too long
+        console.log(`[AgentProcess] Force killing process (pid: ${pid})`)
         this.process?.kill('SIGKILL')
       }, 5000)
 
-      this.process!.on('exit', () => {
+      this.process!.on('exit', (code, signal) => {
         clearTimeout(timeout)
+        console.log(`[AgentProcess] Process exited (pid: ${pid}, code: ${code}, signal: ${signal})`)
         resolve()
       })
 

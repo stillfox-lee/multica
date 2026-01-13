@@ -73,6 +73,8 @@ export class Conductor {
    * Start an ACP agent
    */
   async startAgent(config: AgentConfig): Promise<void> {
+    console.log(`[Conductor] Starting agent: ${config.name} (${config.command} ${config.args.join(' ')})`)
+
     // Stop existing agent if running
     await this.stopAgent()
 
@@ -89,6 +91,8 @@ export class Conductor {
     // Create client-side connection with our Client implementation
     this.connection = new ClientSideConnection((_agent) => this.createClient(), stream)
 
+    console.log(`[Conductor] Sending ACP initialize request (protocol v${PROTOCOL_VERSION})`)
+
     // Initialize the ACP connection
     const initResult = await this.connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
@@ -102,7 +106,9 @@ export class Conductor {
       },
     })
 
-    console.log(`[Conductor] Connected to ${config.name} (protocol v${initResult.protocolVersion})`)
+    console.log(`[Conductor] ACP connected to ${config.name}`)
+    console.log(`[Conductor]   Protocol version: ${initResult.protocolVersion}`)
+    console.log(`[Conductor]   Agent info:`, initResult.agentInfo)
     this.currentAgentConfig = config
 
     // Handle agent process exit
@@ -118,11 +124,13 @@ export class Conductor {
    */
   async stopAgent(): Promise<void> {
     if (this.agentProcess) {
+      console.log(`[Conductor] Stopping agent: ${this.currentAgentConfig?.name}`)
       await this.agentProcess.stop()
       this.agentProcess = null
       this.connection = null
       this.currentAgentConfig = null
       this.activeSessionId = null
+      console.log(`[Conductor] Agent stopped`)
     }
   }
 
@@ -236,10 +244,15 @@ export class Conductor {
       throw new Error(`Session not found: ${sessionId}`)
     }
 
+    console.log(`[Conductor] Sending prompt to session ${agentSessionId}`)
+    console.log(`[Conductor]   Content: ${content.slice(0, 100)}${content.length > 100 ? '...' : ''}`)
+
     const result = await this.connection.prompt({
       sessionId: agentSessionId,
       prompt: [{ type: 'text', text: content }],
     })
+
+    console.log(`[Conductor] Prompt completed with stopReason: ${result.stopReason}`)
 
     return result.stopReason
   }
@@ -265,7 +278,9 @@ export class Conductor {
     }
 
     if (agentSessionId) {
+      console.log(`[Conductor] Cancelling request for session ${agentSessionId}`)
       await this.connection.cancel({ sessionId: agentSessionId })
+      console.log(`[Conductor] Cancel request sent`)
     }
   }
 
@@ -345,6 +360,25 @@ export class Conductor {
     return {
       // Handle session updates from agent
       sessionUpdate: async (params: SessionNotification) => {
+        // Log the update type
+        const update = params.update
+        if ('sessionUpdate' in update) {
+          const updateType = update.sessionUpdate
+          if (updateType === 'agent_message_chunk') {
+            // Don't log full text chunks, just note they're arriving
+            const contentType = update.content?.type || 'unknown'
+            console.log(`[ACP] Session update: ${updateType} (${contentType})`)
+          } else if (updateType === 'tool_call') {
+            console.log(`[ACP] Session update: ${updateType} - ${update.title} [${update.status}]`)
+          } else if (updateType === 'tool_call_update') {
+            console.log(`[ACP] Session update: ${updateType} [${update.status}]`)
+          } else {
+            console.log(`[ACP] Session update: ${updateType}`, update)
+          }
+        } else {
+          console.log(`[ACP] Session update (raw):`, params)
+        }
+
         // Store raw update to SessionStore (if available)
         if (this.activeSessionId && this.sessionStore) {
           try {
