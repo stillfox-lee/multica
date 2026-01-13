@@ -38,6 +38,7 @@ pnpm cli prompt "message"         # One-shot prompt
 pnpm cli sessions                 # List sessions
 pnpm cli resume <id>              # Resume session
 pnpm cli agents                   # List available agents
+pnpm cli doctor                   # Check agent installations
 ```
 
 ### Interactive Mode
@@ -60,6 +61,7 @@ Available commands in interactive mode:
 | `/history` | Show current session message history |
 | `/agent <name>` | Switch to a different agent |
 | `/agents` | List available agents |
+| `/doctor` | Check agent installations |
 | `/status` | Show current status |
 | `/cancel` | Cancel current request |
 | `/quit` | Exit CLI |
@@ -72,6 +74,20 @@ Send a single prompt and exit:
 pnpm cli prompt "What is 2+2?"
 pnpm cli prompt "List files" --cwd=/tmp
 ```
+
+### Doctor
+
+Check if agents are installed on your system:
+
+```bash
+pnpm cli doctor
+```
+
+This will show:
+- Installation status for each agent
+- Path to the installed binary
+- Version information (when available)
+- Install commands for missing agents
 
 ### Options
 

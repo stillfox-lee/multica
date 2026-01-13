@@ -22,9 +22,10 @@
  *   /quit          Exit
  */
 import * as readline from 'node:readline'
+import { execSync } from 'node:child_process'
 import { resolve, join, basename } from 'node:path'
 import { existsSync, writeFileSync, mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
+import { homedir, platform } from 'node:os'
 import { Conductor } from './conductor'
 import { SessionStore } from './session/SessionStore'
 import { DEFAULT_AGENTS } from './config'
@@ -99,6 +100,7 @@ ${c.bold}Commands:${c.reset}
   ${c.cyan}/history${c.reset}           Show current session message history
   ${c.cyan}/agent <name>${c.reset}      Switch to a different agent
   ${c.cyan}/agents${c.reset}            List available agents
+  ${c.cyan}/doctor${c.reset}            Check agent installations
   ${c.cyan}/status${c.reset}            Show current status
   ${c.cyan}/cancel${c.reset}            Cancel current request
   ${c.cyan}/quit${c.reset}              Exit CLI
@@ -278,6 +280,118 @@ async function cmdAgents() {
     print(`  ${c.cyan}${id}${c.reset} - ${config.name} (${status})`)
     print(`    ${c.dim}Command: ${config.command} ${config.args.join(' ')}${c.reset}`)
   }
+}
+
+/**
+ * Check if a command exists in the system PATH
+ */
+function commandExists(cmd: string): { exists: boolean; path?: string; version?: string } {
+  const isWindows = platform() === 'win32'
+  const whichCmd = isWindows ? 'where' : 'which'
+
+  try {
+    const path = execSync(`${whichCmd} ${cmd}`, {
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim().split('\n')[0]
+
+    // Try to get version
+    let version: string | undefined
+    try {
+      const versionOutput = execSync(`${cmd} --version`, {
+        encoding: 'utf-8',
+        stdio: ['pipe', 'pipe', 'pipe'],
+        timeout: 5000,
+      }).trim()
+      // Extract first line or first meaningful part
+      version = versionOutput.split('\n')[0].slice(0, 50)
+    } catch {
+      // Some commands don't support --version
+    }
+
+    return { exists: true, path, version }
+  } catch {
+    return { exists: false }
+  }
+}
+
+interface AgentCheckResult {
+  id: string
+  name: string
+  command: string
+  installed: boolean
+  path?: string
+  version?: string
+  installHint?: string
+}
+
+/**
+ * Check all agents installation status
+ */
+async function cmdDoctor(): Promise<AgentCheckResult[]> {
+  print(`\n${c.bold}Multica Doctor${c.reset} - Checking agent installations\n`)
+  print(`${'─'.repeat(60)}`)
+
+  const results: AgentCheckResult[] = []
+
+  // Install hints for each agent
+  const installHints: Record<string, string> = {
+    opencode: 'go install github.com/anomalyco/opencode@latest',
+    codex: 'npm install -g codex-acp',
+    gemini: 'npm install -g @anthropic-ai/gemini-cli',
+  }
+
+  for (const [id, config] of Object.entries(DEFAULT_AGENTS)) {
+    const check = commandExists(config.command)
+
+    const result: AgentCheckResult = {
+      id,
+      name: config.name,
+      command: config.command,
+      installed: check.exists,
+      path: check.path,
+      version: check.version,
+      installHint: installHints[id],
+    }
+    results.push(result)
+
+    // Display result
+    const statusIcon = check.exists ? `${c.green}✓${c.reset}` : `${c.red}✗${c.reset}`
+    const statusText = check.exists
+      ? `${c.green}installed${c.reset}`
+      : `${c.red}not found${c.reset}`
+
+    print(`${statusIcon} ${c.bold}${config.name}${c.reset} (${config.command})`)
+    print(`  Status: ${statusText}`)
+
+    if (check.exists) {
+      if (check.path) {
+        print(`  ${c.dim}Path: ${check.path}${c.reset}`)
+      }
+      if (check.version) {
+        print(`  ${c.dim}Version: ${check.version}${c.reset}`)
+      }
+    } else if (installHints[id]) {
+      print(`  ${c.dim}Install: ${installHints[id]}${c.reset}`)
+    }
+    print('')
+  }
+
+  print(`${'─'.repeat(60)}`)
+
+  // Summary
+  const installed = results.filter((r) => r.installed).length
+  const total = results.length
+
+  if (installed === total) {
+    printSuccess(`All ${total} agents are installed!`)
+  } else if (installed > 0) {
+    printInfo(`${installed}/${total} agents installed`)
+  } else {
+    printError(`No agents installed. Install at least one to use Multica.`)
+  }
+
+  return results
 }
 
 async function cmdSwitchAgent(state: CLIState, agentId: string) {
@@ -464,6 +578,10 @@ async function runInteractiveMode(state: CLIState) {
               break
             case 'agents':
               await cmdAgents()
+              break
+            case 'doctor':
+            case 'check':
+              await cmdDoctor()
               break
             case 'status':
             case 's':
@@ -673,6 +791,12 @@ async function main() {
       process.exit(0)
     }
 
+    case 'doctor':
+    case 'check': {
+      await cmdDoctor()
+      process.exit(0)
+    }
+
     case 'help':
     case '--help':
     case '-h': {
@@ -685,6 +809,7 @@ ${c.bold}Usage:${c.reset}
   pnpm cli sessions                 List sessions
   pnpm cli resume <id>              Resume session
   pnpm cli agents                   List available agents
+  pnpm cli doctor                   Check agent installations
 
 ${c.bold}Options:${c.reset}
   --cwd=PATH    Working directory
