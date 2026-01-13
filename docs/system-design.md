@@ -352,57 +352,65 @@ class Conductor {
 }
 ```
 
-#### 5.2.2 Session Manager
+#### 5.2.2 Session Store (Implemented)
 
-**Responsibility**: Track and manage multiple conversation sessions.
+**Responsibility**: Persist and manage session data with conversation history.
+
+**Storage Structure**:
+```
+~/.multica/sessions/
+├── index.json              # Session list index (fast load)
+└── data/
+    └── {session-id}.json   # Complete session data + updates
+```
+
+**Key Design Decisions**:
+- **Client-side storage**: Multica stores raw ACP `session/update` data
+- **Agent-agnostic**: Each agent (opencode, codex, gemini) manages its own internal state
+- **Resume behavior**: Creates new ACP session, displays stored history in UI only
 
 ```typescript
-// src/main/conductor/SessionManager.ts
+// src/main/session/SessionStore.ts
 
-interface SessionState {
-  id: string;
+interface MulticaSession {
+  id: string;                 // Multica-generated UUID
+  agentSessionId: string;     // Agent-returned session ID
+  agentId: string;            // Agent used (opencode/codex/gemini)
   workingDirectory: string;
-  createdAt: Date;
-  lastActiveAt: Date;
+  createdAt: string;          // ISO 8601
+  updatedAt: string;
+  status: 'active' | 'completed' | 'error';
+  title?: string;
   messageCount: number;
 }
 
-class SessionManager {
-  private sessions: Map<string, SessionState> = new Map();
+interface StoredSessionUpdate {
+  timestamp: string;
+  update: SessionNotification;  // Raw ACP data
+}
 
-  createSession(id: string, workingDirectory: string): SessionState {
-    const state: SessionState = {
-      id,
-      workingDirectory,
-      createdAt: new Date(),
-      lastActiveAt: new Date(),
-      messageCount: 0,
-    };
-    this.sessions.set(id, state);
-    return state;
-  }
+interface SessionData {
+  session: MulticaSession;
+  updates: StoredSessionUpdate[];
+}
 
-  updateActivity(sessionId: string): void {
-    const session = this.sessions.get(sessionId);
-    if (session) {
-      session.lastActiveAt = new Date();
-      session.messageCount++;
-    }
-  }
-
-  getSession(sessionId: string): SessionState | undefined {
-    return this.sessions.get(sessionId);
-  }
-
-  getAllSessions(): SessionState[] {
-    return Array.from(this.sessions.values());
-  }
-
-  removeSession(sessionId: string): void {
-    this.sessions.delete(sessionId);
-  }
+class SessionStore {
+  async initialize(): Promise<void>;
+  async create(params: CreateSessionParams): Promise<MulticaSession>;
+  async list(options?: ListSessionsOptions): Promise<MulticaSession[]>;
+  async get(sessionId: string): Promise<SessionData | null>;
+  async appendUpdate(sessionId: string, update: SessionNotification): Promise<void>;
+  async updateMeta(sessionId: string, updates: Partial<MulticaSession>): Promise<MulticaSession>;
+  async delete(sessionId: string): Promise<void>;
 }
 ```
+
+**Session Resume Flow**:
+1. Load session data from SessionStore
+2. Start agent if not running
+3. Create new ACP session (agent has no memory of previous conversation)
+4. Update `agentSessionId` mapping
+5. UI displays stored conversation history
 
 #### 5.2.3 Config Manager
 
@@ -1022,11 +1030,12 @@ const mainWindow = new BrowserWindow({
 
 | ID | Question | Status | Decision |
 |----|----------|--------|----------|
-| Q1 | Official ACP TypeScript SDK package name? | Open | Need to verify |
-| Q2 | Should we support multiple concurrent sessions in V1? | Open | Leaning towards single session |
+| Q1 | Official ACP TypeScript SDK package name? | ✅ Resolved | `@agentclientprotocol/sdk` |
+| Q2 | Should we support multiple concurrent sessions in V1? | ✅ Resolved | Yes, SessionStore supports multiple sessions |
 | Q3 | How to handle agent crashes gracefully? | Open | Auto-restart with notification |
-| Q4 | Conversation history storage format? | Open | SQLite vs JSON files |
-| Q5 | Should working directory be per-session or global? | Open | Per-session recommended |
+| Q4 | Conversation history storage format? | ✅ Resolved | JSON files (index.json + per-session data files) |
+| Q5 | Should working directory be per-session or global? | ✅ Resolved | Per-session |
+| Q6 | Should Multica restore agent internal state on resume? | Open | Currently: No. Creates new ACP session, UI shows history only. Future: Consider `session/load` if agents support it. |
 
 ---
 
