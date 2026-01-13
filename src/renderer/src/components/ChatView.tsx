@@ -1,7 +1,7 @@
 /**
  * Chat view component - displays messages and tool calls
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { StoredSessionUpdate } from '../../../shared/types'
 
 interface ChatViewProps {
@@ -215,192 +215,203 @@ interface MessageBubbleProps {
 function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.role === 'user'
 
-  return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`max-w-[85%] rounded-lg px-4 py-2 ${
-          isUser
-            ? 'bg-[var(--color-primary)] text-white'
-            : 'bg-[var(--color-surface)]'
-        }`}
-      >
-        {/* Thought (agent reasoning) */}
-        {message.thought && (
-          <div className="mb-2 rounded border-l-2 border-purple-500/50 bg-purple-500/10 py-1 pl-2 text-xs text-[var(--color-text-muted)] italic">
-            {message.thought}
-          </div>
-        )}
-
-        {/* Tool calls */}
-        {message.toolCalls.length > 0 && (
-          <div className="mb-2 space-y-2">
-            {message.toolCalls.map((tc) => (
-              <ToolCallCard key={tc.id} toolCall={tc} />
-            ))}
-          </div>
-        )}
-
-        {/* Text content */}
-        {message.content && (
-          <div className="whitespace-pre-wrap text-sm">{message.content}</div>
-        )}
+  // User message - bubble style
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[85%] rounded-lg bg-[var(--color-surface)] px-4 py-3 text-sm">
+          {message.content}
+        </div>
       </div>
-    </div>
-  )
-}
-
-interface ToolCallCardProps {
-  toolCall: ToolCall
-}
-
-function ToolCallCard({ toolCall }: ToolCallCardProps) {
-  const [expanded, setExpanded] = useState(false)
-
-  // Get icon based on tool kind
-  const icon = getToolIcon(toolCall.kind, toolCall.title)
-
-  // Get clean title
-  const cleanTitle = getCleanTitle(toolCall.title, toolCall.kind)
-
-  // Status styling
-  const statusConfig = {
-    completed: { icon: '✓', color: 'text-green-500', bg: 'bg-green-500/10' },
-    failed: { icon: '✗', color: 'text-red-500', bg: 'bg-red-500/10' },
-    running: { icon: null, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    in_progress: { icon: null, color: 'text-blue-500', bg: 'bg-blue-500/10' },
-    pending: { icon: '○', color: 'text-yellow-500', bg: 'bg-yellow-500/10' },
+    )
   }
-  const status = statusConfig[toolCall.status as keyof typeof statusConfig] || statusConfig.pending
 
-  const hasDetails = toolCall.input || toolCall.output
-
+  // Assistant message - flat list style
   return (
-    <div
-      className={`rounded-lg border border-[var(--color-border)] ${status.bg} overflow-hidden text-xs`}
-    >
-      {/* Header - always visible */}
-      <div
-        className={`flex items-center gap-2 px-3 py-2 ${hasDetails ? 'cursor-pointer hover:bg-black/5' : ''}`}
-        onClick={() => hasDetails && setExpanded(!expanded)}
-      >
-        {/* Tool icon */}
-        <span className="text-base">{icon}</span>
+    <div className="space-y-2">
+      {/* Thought */}
+      {message.thought && (
+        <ThoughtLine text={message.thought} />
+      )}
 
-        {/* Title */}
-        <span className="flex-1 font-medium truncate">{cleanTitle}</span>
+      {/* Tool calls */}
+      {message.toolCalls.map((tc) => (
+        <ToolCallLine key={tc.id} toolCall={tc} />
+      ))}
 
-        {/* Status */}
-        <span className={`flex items-center gap-1 ${status.color}`}>
-          {status.icon ? (
-            <span>{status.icon}</span>
-          ) : (
-            <LoadingDots />
-          )}
-          <span className="text-[10px] uppercase">{toolCall.status}</span>
-        </span>
-
-        {/* Expand icon */}
-        {hasDetails && (
-          <span className={`text-[var(--color-text-muted)] transition-transform ${expanded ? 'rotate-180' : ''}`}>
-            ▼
-          </span>
-        )}
-      </div>
-
-      {/* Details - collapsible */}
-      {expanded && hasDetails && (
-        <div className="border-t border-[var(--color-border)] bg-black/10 px-3 py-2 space-y-2">
-          {toolCall.input && (
-            <div>
-              <div className="text-[10px] uppercase text-[var(--color-text-muted)] mb-1">Input</div>
-              <pre className="max-h-32 overflow-auto rounded bg-black/20 p-2 text-[var(--color-text-muted)] whitespace-pre-wrap break-all">
-                {toolCall.input}
-              </pre>
-            </div>
-          )}
-          {toolCall.output && (
-            <div>
-              <div className="text-[10px] uppercase text-[var(--color-text-muted)] mb-1">Output</div>
-              <pre className="max-h-32 overflow-auto rounded bg-black/20 p-2 text-[var(--color-text-muted)] whitespace-pre-wrap break-all">
-                {toolCall.output.slice(0, 500)}
-                {toolCall.output.length > 500 && '...'}
-              </pre>
-            </div>
-          )}
+      {/* Text content */}
+      {message.content && (
+        <div className="whitespace-pre-wrap text-sm leading-relaxed">
+          {message.content}
         </div>
       )}
     </div>
   )
 }
 
-function getToolIcon(kind?: string, title?: string): string {
-  const lowerKind = kind?.toLowerCase() || ''
-  const lowerTitle = title?.toLowerCase() || ''
-
-  // Match by kind first
-  if (lowerKind.includes('search') || lowerKind.includes('grep') || lowerKind.includes('glob')) {
-    return '🔍'
-  }
-  if (lowerKind.includes('file') || lowerKind.includes('read') || lowerKind.includes('write')) {
-    return '📄'
-  }
-  if (lowerKind.includes('edit')) {
-    return '✏️'
-  }
-  if (lowerKind.includes('bash') || lowerKind.includes('shell') || lowerKind.includes('command')) {
-    return '⌨️'
-  }
-
-  // Match by title
-  if (lowerTitle.includes('list') || lowerTitle.includes('ls')) {
-    return '📁'
-  }
-  if (lowerTitle.includes('read')) {
-    return '📖'
-  }
-  if (lowerTitle.includes('write') || lowerTitle.includes('create')) {
-    return '📝'
-  }
-  if (lowerTitle.includes('edit') || lowerTitle.includes('replace')) {
-    return '✏️'
-  }
-  if (lowerTitle.includes('run') || lowerTitle.includes('exec') || lowerTitle.includes('bash')) {
-    return '⌨️'
-  }
-  if (lowerTitle.includes('search') || lowerTitle.includes('find') || lowerTitle.includes('grep')) {
-    return '🔍'
-  }
-  if (lowerTitle.includes('glob')) {
-    return '🔍'
-  }
-
-  return '🔧'
+// Thought line - inline display
+function ThoughtLine({ text }: { text: string }) {
+  const truncated = text.length > 80 ? text.slice(0, 77) + '...' : text
+  return (
+    <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
+      <span className="opacity-60">⊛</span>
+      <span className="font-medium">Thinking</span>
+      <span className="rounded bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs">
+        {truncated}
+      </span>
+    </div>
+  )
 }
 
-function getCleanTitle(title?: string, kind?: string): string {
-  if (!title) return kind || 'Tool Call'
+// Tool call line - inline display
+function ToolCallLine({ toolCall }: { toolCall: ToolCall }) {
+  const { icon, action, detail } = parseToolCall(toolCall)
 
-  // If title is too long or looks like a command, try to extract meaningful part
-  const cleanTitle = title.trim()
+  const isRunning = toolCall.status === 'running' || toolCall.status === 'in_progress' || toolCall.status === 'pending'
+  const isFailed = toolCall.status === 'failed'
 
-  // If it starts with "Run " and has a long command, shorten it
-  if (cleanTitle.startsWith('Run ') && cleanTitle.length > 50) {
-    const cmd = cleanTitle.slice(4).split(' ')[0]
-    return `Run ${cmd}`
+  return (
+    <div className={`flex items-center gap-2 text-sm ${isFailed ? 'text-red-400' : 'text-[var(--color-text-muted)]'}`}>
+      {/* Icon */}
+      <span className="w-4 text-center font-mono opacity-60">{icon}</span>
+
+      {/* Action */}
+      <span className={isRunning ? '' : ''}>{action}</span>
+
+      {/* Detail in code pill */}
+      {detail && (
+        <span className="rounded bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs truncate max-w-[300px]">
+          {detail}
+        </span>
+      )}
+
+      {/* Running indicator */}
+      {isRunning && <LoadingDots />}
+    </div>
+  )
+}
+
+interface ParsedToolCall {
+  icon: string
+  action: string
+  detail?: string
+}
+
+function parseToolCall(toolCall: ToolCall): ParsedToolCall {
+  const title = toolCall.title?.toLowerCase() || ''
+  const kind = toolCall.kind?.toLowerCase() || ''
+
+  // Try to extract file path from input
+  let filePath: string | undefined
+  if (toolCall.input) {
+    try {
+      const parsed = JSON.parse(toolCall.input)
+      filePath = parsed.file_path || parsed.path || parsed.filePath || parsed.pattern
+    } catch {
+      // Not JSON, might be a direct path
+      if (toolCall.input.startsWith('/') || toolCall.input.includes('.')) {
+        filePath = toolCall.input.split('\n')[0].trim()
+      }
+    }
   }
 
-  // If it's a file path, show just the filename
-  if (cleanTitle.includes('/') && !cleanTitle.includes(' ')) {
-    const parts = cleanTitle.split('/')
-    return parts[parts.length - 1] || cleanTitle
+  // Determine icon and action based on kind/title
+  if (kind === 'search' || title.includes('glob') || title.includes('search') || title.includes('grep')) {
+    return {
+      icon: '◎',
+      action: title.includes('glob') ? 'Search files' : 'Search',
+      detail: filePath || extractPathFromTitle(toolCall.title),
+    }
   }
 
-  // Truncate if too long
-  if (cleanTitle.length > 60) {
-    return cleanTitle.slice(0, 57) + '...'
+  if (title.includes('list') || title.startsWith('ls')) {
+    return {
+      icon: '▤',
+      action: 'List',
+      detail: extractPathFromTitle(toolCall.title),
+    }
   }
 
-  return cleanTitle
+  if (title.includes('read')) {
+    return {
+      icon: '◔',
+      action: 'Read',
+      detail: filePath || extractPathFromTitle(toolCall.title),
+    }
+  }
+
+  if (title.includes('write') || title.includes('create')) {
+    // Try to get line count from output
+    let lineCount = ''
+    if (toolCall.output) {
+      const lines = toolCall.output.split('\n').length
+      if (lines > 1) lineCount = `${lines} lines`
+    }
+    return {
+      icon: '▤',
+      action: lineCount ? `Write ${lineCount}` : 'Write',
+      detail: filePath || extractPathFromTitle(toolCall.title),
+    }
+  }
+
+  if (title.includes('edit') || title.includes('replace')) {
+    return {
+      icon: '✎',
+      action: 'Edit',
+      detail: filePath || extractPathFromTitle(toolCall.title),
+    }
+  }
+
+  if (title.startsWith('run') || kind === 'bash' || kind === 'shell') {
+    const cmd = extractCommandFromTitle(toolCall.title)
+    return {
+      icon: '>_',
+      action: getCommandDescription(toolCall.title),
+      detail: cmd,
+    }
+  }
+
+  // Default
+  return {
+    icon: '◇',
+    action: toolCall.title || toolCall.kind || 'Tool',
+    detail: filePath,
+  }
+}
+
+function extractPathFromTitle(title?: string): string | undefined {
+  if (!title) return undefined
+  // Look for path-like strings
+  const match = title.match(/\/[\w\-./]+/)
+  return match ? match[0] : undefined
+}
+
+function extractCommandFromTitle(title?: string): string | undefined {
+  if (!title) return undefined
+  // Remove "Run " prefix and get the command
+  if (title.toLowerCase().startsWith('run ')) {
+    const cmd = title.slice(4).trim()
+    // Truncate if too long
+    return cmd.length > 50 ? cmd.slice(0, 47) + '...' : cmd
+  }
+  return undefined
+}
+
+function getCommandDescription(title?: string): string {
+  if (!title) return 'Run command'
+  const lower = title.toLowerCase()
+
+  if (lower.includes('mkdir')) return 'Create directory'
+  if (lower.includes('rm ')) return 'Remove'
+  if (lower.includes('mv ')) return 'Move'
+  if (lower.includes('cp ')) return 'Copy'
+  if (lower.includes('npm') || lower.includes('pnpm') || lower.includes('yarn')) return 'Package manager'
+  if (lower.includes('git')) return 'Git'
+  if (lower.includes('python')) return 'Run Python'
+  if (lower.includes('node')) return 'Run Node'
+  if (lower.includes('perl')) return 'Run Perl'
+
+  return 'Run command'
 }
 
 function LoadingDots() {
