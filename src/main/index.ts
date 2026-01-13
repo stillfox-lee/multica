@@ -66,21 +66,14 @@ app.whenReady().then(async () => {
   conductor = new Conductor({
     events: {
       onSessionUpdate: (params) => {
-        // Forward session updates to renderer
+        // Forward ALL session updates to renderer (not just agent_message_chunk)
         if (mainWindow && !mainWindow.isDestroyed()) {
-          const update = params.update
-          // Convert to AgentMessage format for renderer
-          if ('sessionUpdate' in update) {
-            const content: Array<{ type: 'text'; text: string }> = []
-            if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text') {
-              content.push({ type: 'text', text: update.content.text })
-            }
-            mainWindow.webContents.send(IPC_CHANNELS.AGENT_MESSAGE, {
-              sessionId: params.sessionId,
-              content,
-              done: false,
-            })
-          }
+          // Send the full SessionNotification so renderer can handle all update types
+          mainWindow.webContents.send(IPC_CHANNELS.AGENT_MESSAGE, {
+            sessionId: params.sessionId,
+            update: params.update,  // Full update object
+            done: false,
+          })
         }
       },
     },

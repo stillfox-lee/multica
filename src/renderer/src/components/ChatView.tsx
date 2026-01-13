@@ -68,6 +68,7 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
 interface Message {
   role: 'user' | 'assistant'
   content: string
+  thought: string
   toolCalls: ToolCall[]
 }
 
@@ -83,6 +84,7 @@ interface ToolCall {
 function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
   const messages: Message[] = []
   let currentAssistantContent = ''
+  let currentThought = ''
   let currentToolCalls: ToolCall[] = []
   const toolCallMap = new Map<string, ToolCall>()
 
@@ -97,13 +99,15 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
     switch (update.sessionUpdate) {
       case 'user_message' as string:
         // Flush any pending assistant message
-        if (currentAssistantContent || currentToolCalls.length > 0) {
+        if (currentAssistantContent || currentThought || currentToolCalls.length > 0) {
           messages.push({
             role: 'assistant',
             content: currentAssistantContent,
+            thought: currentThought,
             toolCalls: currentToolCalls,
           })
           currentAssistantContent = ''
+          currentThought = ''
           currentToolCalls = []
           toolCallMap.clear()
         }
@@ -114,6 +118,7 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
             messages.push({
               role: 'user',
               content: userUpdate.content.text,
+              thought: '',
               toolCalls: [],
             })
           }
@@ -128,7 +133,10 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
         break
 
       case 'agent_thought_chunk':
-        // Skip thought chunks for now (could show them differently)
+        // Accumulate thought chunks
+        if ('content' in update && update.content?.type === 'text') {
+          currentThought += update.content.text
+        }
         break
 
       case 'tool_call':
@@ -188,10 +196,11 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
   }
 
   // Flush any remaining assistant content
-  if (currentAssistantContent || currentToolCalls.length > 0) {
+  if (currentAssistantContent || currentThought || currentToolCalls.length > 0) {
     messages.push({
       role: 'assistant',
       content: currentAssistantContent.trim(),
+      thought: currentThought.trim(),
       toolCalls: currentToolCalls,
     })
   }
@@ -215,6 +224,13 @@ function MessageBubble({ message }: MessageBubbleProps) {
             : 'bg-[var(--color-surface)]'
         }`}
       >
+        {/* Thought (agent reasoning) */}
+        {message.thought && (
+          <div className="mb-2 rounded border-l-2 border-purple-500/50 bg-purple-500/10 py-1 pl-2 text-xs text-[var(--color-text-muted)] italic">
+            {message.thought}
+          </div>
+        )}
+
         {/* Tool calls */}
         {message.toolCalls.length > 0 && (
           <div className="mb-2 space-y-2">

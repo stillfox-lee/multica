@@ -11,7 +11,17 @@ import type {
 
 export interface AgentMessage {
   sessionId: string
-  content: Array<{ type: 'text'; text: string } | { type: 'code'; language: string; code: string }>
+  update: {
+    sessionUpdate: string
+    content?: { type: string; text: string }
+    toolCallId?: string
+    title?: string
+    status?: string
+    kind?: string
+    rawInput?: unknown
+    rawOutput?: unknown
+    [key: string]: unknown
+  }
   done: boolean
 }
 

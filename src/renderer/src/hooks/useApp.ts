@@ -61,48 +61,61 @@ export function useApp(): AppState & AppActions {
   // Subscribe to agent events
   useEffect(() => {
     const unsubMessage = window.electronAPI.onAgentMessage((message) => {
-      // Accumulate streaming text
-      for (const content of message.content) {
-        if (content.type === 'text') {
-          streamingTextRef.current += content.text
-        }
+      const update = message.update
+      const updateType = update?.sessionUpdate
+
+      // Handle streaming text accumulation for agent messages
+      if (updateType === 'agent_message_chunk' && update.content?.type === 'text') {
+        streamingTextRef.current += update.content.text
       }
 
-      // Create/update the streaming message in updates
+      // Add the update to session updates for real-time display
       setSessionUpdates((prev) => {
         const now = new Date().toISOString()
-        // Find or create streaming message update
-        const streamingUpdate: StoredSessionUpdate = {
+
+        // For agent_message_chunk, we want to show accumulated text
+        if (updateType === 'agent_message_chunk') {
+          const streamingUpdate: StoredSessionUpdate = {
+            timestamp: now,
+            update: {
+              sessionId: message.sessionId,
+              update: {
+                sessionUpdate: 'agent_message_chunk',
+                content: { type: 'text', text: streamingTextRef.current },
+              },
+            },
+          }
+
+          // Replace last streaming update if it was also agent_message_chunk
+          const lastIdx = prev.length - 1
+          if (lastIdx >= 0) {
+            const last = prev[lastIdx]
+            if (
+              last.update.update &&
+              'sessionUpdate' in last.update.update &&
+              last.update.update.sessionUpdate === 'agent_message_chunk'
+            ) {
+              return [...prev.slice(0, lastIdx), streamingUpdate]
+            }
+          }
+          return [...prev, streamingUpdate]
+        }
+
+        // For all other update types, add them directly
+        const newUpdate = {
           timestamp: now,
           update: {
             sessionId: message.sessionId,
-            update: {
-              sessionUpdate: 'agent_message_chunk',
-              content: { type: 'text', text: streamingTextRef.current },
-            },
+            update: update,
           },
-        }
-
-        // Replace last streaming update or add new one
-        const lastIdx = prev.length - 1
-        if (lastIdx >= 0 && !message.done) {
-          const last = prev[lastIdx]
-          if (
-            last.update.update &&
-            'sessionUpdate' in last.update.update &&
-            last.update.update.sessionUpdate === 'agent_message_chunk'
-          ) {
-            return [...prev.slice(0, lastIdx), streamingUpdate]
-          }
-        }
-
-        if (message.done) {
-          streamingTextRef.current = ''
-          setIsProcessing(false)
-        }
-
-        return [...prev, streamingUpdate]
+        } as StoredSessionUpdate
+        return [...prev, newUpdate]
       })
+
+      if (message.done) {
+        streamingTextRef.current = ''
+        setIsProcessing(false)
+      }
     })
 
     const unsubStatus = window.electronAPI.onAgentStatus((status) => {
