@@ -4,8 +4,9 @@
 import { useState, useEffect } from 'react'
 import { useApp } from './hooks/useApp'
 import { SessionList, ChatView, MessageInput, StatusBar, Settings } from './components'
+import { ThemeProvider } from './contexts/ThemeContext'
 
-function App(): React.JSX.Element {
+function AppContent(): React.JSX.Element {
   const {
     // State
     sessions,
@@ -185,6 +186,14 @@ function App(): React.JSX.Element {
         onSwitchAgent={switchAgent}
       />
     </div>
+  )
+}
+
+function App(): React.JSX.Element {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   )
 }
 

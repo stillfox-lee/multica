@@ -4,6 +4,7 @@
  */
 import { useState, useEffect } from 'react'
 import type { AgentCheckResult } from '../../../shared/electron-api'
+import { useTheme } from '../contexts/ThemeContext'
 
 interface SettingsProps {
   isOpen: boolean
@@ -20,11 +21,14 @@ const AGENT_ICONS: Record<string, string> = {
   claude: '◉',
 }
 
+type ThemeMode = 'light' | 'dark' | 'system'
+
 export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: SettingsProps) {
   const [agents, setAgents] = useState<AgentCheckResult[]>([])
   const [loading, setLoading] = useState(true)
   const [switching, setSwitching] = useState<string | null>(null)
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const { mode, setMode } = useTheme()
 
   useEffect(() => {
     if (isOpen) {
@@ -79,64 +83,134 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-      <div className="w-full max-w-md rounded-xl bg-[var(--color-background)] p-8">
+      <div className="w-full max-w-md rounded-xl bg-[var(--color-background)] p-8 max-h-[90vh] overflow-y-auto">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-[var(--color-text)]">Set up agents</h1>
-          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
-            Select a coding agent to use. Agents use local authentication.
-          </p>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)]">Settings</h1>
         </div>
 
-        {/* Agent Cards */}
-        {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-accent)] border-t-transparent" />
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {agents.map((agent) => (
-              <AgentCard
-                key={agent.id}
-                agent={agent}
-                isSelected={agent.id === selectedAgent}
-                onSelect={() => agent.installed && setSelectedAgent(agent.id)}
-              />
-            ))}
-          </div>
-        )}
+        {/* Appearance Section */}
+        <div className="mb-8">
+          <h2 className="mb-3 text-sm font-medium text-[var(--color-text-muted)]">Appearance</h2>
+          <ThemeSelector value={mode} onChange={setMode} />
+        </div>
+
+        {/* Agent Section */}
+        <div className="mb-6">
+          <h2 className="mb-3 text-sm font-medium text-[var(--color-text-muted)]">Coding Agent</h2>
+          <p className="mb-4 text-xs text-[var(--color-text-muted)]">
+            Select a coding agent. Agents use local authentication.
+          </p>
+
+          {/* Agent Cards */}
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-[var(--color-accent)] border-t-transparent" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {agents.map((agent) => (
+                <AgentCard
+                  key={agent.id}
+                  agent={agent}
+                  isSelected={agent.id === selectedAgent}
+                  onSelect={() => agent.installed && setSelectedAgent(agent.id)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Footer */}
-        <div className="mt-8 flex items-center justify-between">
+        <div className="flex items-center justify-between border-t border-[var(--color-border)] pt-6">
           <button
             onClick={loadAgents}
             disabled={loading}
             className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)] disabled:opacity-50"
           >
-            Refresh
+            Refresh agents
           </button>
 
-          <button
-            onClick={handleContinue}
-            disabled={!selectedAgent || !!switching || installedCount === 0}
-            className="flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-5 py-2.5 font-medium text-[var(--color-primary-text)] transition-colors hover:bg-[var(--color-primary-dark)] disabled:opacity-50"
-          >
-            {switching ? (
-              <>
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                Switching...
-              </>
-            ) : (
-              <>
-                Continue
-                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                </svg>
-              </>
-            )}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-[var(--color-text-muted)] hover:bg-[var(--color-surface)]"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleContinue}
+              disabled={!selectedAgent || !!switching || installedCount === 0}
+              className="flex items-center gap-2 rounded-lg bg-[var(--color-primary)] px-5 py-2 font-medium text-[var(--color-primary-text)] transition-colors hover:bg-[var(--color-primary-dark)] disabled:opacity-50"
+            >
+              {switching ? (
+                <>
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  Switching...
+                </>
+              ) : (
+                'Done'
+              )}
+            </button>
+          </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+interface ThemeSelectorProps {
+  value: ThemeMode
+  onChange: (mode: ThemeMode) => void
+}
+
+function ThemeSelector({ value, onChange }: ThemeSelectorProps) {
+  const options: { mode: ThemeMode; label: string; icon: React.ReactNode }[] = [
+    {
+      mode: 'light',
+      label: 'Light',
+      icon: (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+        </svg>
+      ),
+    },
+    {
+      mode: 'dark',
+      label: 'Dark',
+      icon: (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+        </svg>
+      ),
+    },
+    {
+      mode: 'system',
+      label: 'System',
+      icon: (
+        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+        </svg>
+      ),
+    },
+  ]
+
+  return (
+    <div className="flex gap-2">
+      {options.map(({ mode, label, icon }) => (
+        <button
+          key={mode}
+          onClick={() => onChange(mode)}
+          className={`flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-all ${
+            value === mode
+              ? 'border-[var(--color-accent)] bg-[var(--color-accent-muted)] text-[var(--color-text)]'
+              : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-text-muted)]'
+          }`}
+        >
+          {icon}
+          {label}
+        </button>
+      ))}
     </div>
   )
 }

@@ -1,7 +1,8 @@
 @import 'tailwindcss';
 
-/* Custom theme configuration */
-@theme {
+/* Dark theme (default) */
+:root,
+.dark {
   --color-primary: #292929;
   --color-primary-dark: #363636;
   --color-primary-text: #ffffff;
@@ -15,13 +16,30 @@
   --color-text-muted: #a1a1aa;
 }
 
+/* Light theme */
+.light {
+  --color-primary: #f5f5f5;
+  --color-primary-dark: #e5e5e5;
+  --color-primary-text: #171717;
+  --color-accent: #16a34a;
+  --color-accent-muted: rgba(22, 163, 74, 0.1);
+  --color-background: #ffffff;
+  --color-surface: #f5f5f5;
+  --color-surface-hover: #e5e5e5;
+  --color-border: #e5e5e5;
+  --color-text: #171717;
+  --color-text-muted: #525252;
+}
+
 /* Base styles */
 * {
   box-sizing: border-box;
 }
 
 body {
-  @apply bg-[var(--color-background)] text-[var(--color-text)] antialiased;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
   font-family:
     -apple-system,
     BlinkMacSystemFont,
@@ -52,9 +70,10 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-[var(--color-border)] rounded-full;
+  background-color: var(--color-border);
+  border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-[var(--color-text-muted)];
+  background-color: var(--color-text-muted);
 }
