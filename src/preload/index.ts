@@ -41,6 +41,9 @@ const electronAPI: ElectronAPI = {
 
   updateConfig: (config) => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_UPDATE, config),
 
+  // Dialog
+  selectDirectory: () => ipcRenderer.invoke(IPC_CHANNELS.DIALOG_SELECT_DIRECTORY),
+
   // Event listeners
   onAgentMessage: (callback) => {
     const listener = (_event: Electron.IpcRendererEvent, message: unknown) =>

@@ -24,6 +24,9 @@ export const IPC_CHANNELS = {
   CONFIG_GET: 'config:get',
   CONFIG_UPDATE: 'config:update',
 
+  // Dialog
+  DIALOG_SELECT_DIRECTORY: 'dialog:select-directory',
+
   // File system (V2)
   FILE_APPROVAL_REQUEST: 'file:approval-request',
   FILE_APPROVAL_RESPONSE: 'file:approval-response',

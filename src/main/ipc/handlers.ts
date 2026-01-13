@@ -2,7 +2,7 @@
  * IPC handlers for main process
  * Registers all IPC handlers for communication with renderer process
  */
-import { ipcMain } from 'electron'
+import { ipcMain, dialog } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { DEFAULT_AGENTS } from '../config/defaults'
 import type { Conductor } from '../conductor/Conductor'
@@ -105,6 +105,21 @@ export function registerIPCHandlers(conductor: Conductor): void {
     // TODO: Implement config persistence
     console.log(`[IPC] config:update`, config)
     return config
+  })
+
+  // --- Dialog handlers ---
+
+  ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_DIRECTORY, async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Select Working Directory',
+    })
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null
+    }
+
+    return result.filePaths[0]
   })
 
   console.log('[IPC] All handlers registered')

@@ -130,18 +130,28 @@ function App(): React.JSX.Element {
             <label className="mb-2 block text-sm text-[var(--color-text-muted)]">
               Working Directory
             </label>
-            <input
-              type="text"
-              value={newSessionCwd}
-              onChange={(e) => setNewSessionCwd(e.target.value)}
-              placeholder="/path/to/project"
-              className="mb-4 w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-2 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)]"
-              autoFocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') handleCreateSession()
-                if (e.key === 'Escape') setShowNewSession(false)
-              }}
-            />
+            <div className="mb-4 flex gap-2">
+              <input
+                type="text"
+                value={newSessionCwd}
+                onChange={(e) => setNewSessionCwd(e.target.value)}
+                placeholder="Select a directory..."
+                className="flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-background)] px-4 py-2 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-primary)]"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCreateSession()
+                  if (e.key === 'Escape') setShowNewSession(false)
+                }}
+              />
+              <button
+                onClick={async () => {
+                  const dir = await window.electronAPI.selectDirectory()
+                  if (dir) setNewSessionCwd(dir)
+                }}
+                className="flex-shrink-0 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)] px-4 py-2 text-[var(--color-text)] transition-colors hover:bg-[var(--color-border)]"
+              >
+                Browse...
+              </button>
+            </div>
 
             <div className="flex justify-end gap-2">
               <button

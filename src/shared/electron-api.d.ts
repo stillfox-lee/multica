@@ -38,6 +38,9 @@ export interface ElectronAPI {
   getConfig(): Promise<AppConfig>
   updateConfig(config: Partial<AppConfig>): Promise<AppConfig>
 
+  // Dialog
+  selectDirectory(): Promise<string | null>
+
   // Event listeners (return unsubscribe function)
   onAgentMessage(callback: (message: AgentMessage) => void): () => void
   onAgentStatus(callback: (status: AgentStatus) => void): () => void
