@@ -1,7 +1,8 @@
 /**
  * Chat view component - displays messages and tool calls
  */
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import type { StoredSessionUpdate } from '../../../shared/types'
 
 interface ChatViewProps {
@@ -35,7 +36,7 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
           {!hasSession && onNewSession && (
             <button
               onClick={onNewSession}
-              className="rounded-lg bg-[var(--color-primary)] px-4 py-2 font-medium text-white transition-colors hover:bg-[var(--color-primary-dark)]"
+              className="rounded-lg bg-[var(--color-primary)] px-4 py-2 font-medium text-[var(--color-primary-text)] transition-colors hover:bg-[var(--color-primary-dark)]"
             >
               New Session
             </button>
@@ -228,10 +229,10 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
   // Assistant message - flat list style
   return (
-    <div className="space-y-2">
-      {/* Thought */}
+    <div className="space-y-3">
+      {/* Thought - expanded, collapsible */}
       {message.thought && (
-        <ThoughtLine text={message.thought} />
+        <ThoughtBlock text={message.thought} />
       )}
 
       {/* Tool calls */}
@@ -239,26 +240,101 @@ function MessageBubble({ message }: MessageBubbleProps) {
         <ToolCallLine key={tc.id} toolCall={tc} />
       ))}
 
-      {/* Text content */}
+      {/* Text content with markdown */}
       {message.content && (
-        <div className="whitespace-pre-wrap text-sm leading-relaxed">
-          {message.content}
+        <div className="prose prose-invert prose-sm max-w-none">
+          <ReactMarkdown
+            components={{
+              // Custom styling for markdown elements
+              p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
+              h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>,
+              h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3">{children}</h2>,
+              h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-3">{children}</h3>,
+              ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+              ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+              li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+              code: ({ className, children }) => {
+                const isBlock = className?.includes('language-')
+                if (isBlock) {
+                  return (
+                    <code className="block bg-[var(--color-surface)] rounded-lg p-3 text-xs font-mono overflow-x-auto">
+                      {children}
+                    </code>
+                  )
+                }
+                return (
+                  <code className="bg-[var(--color-surface)] rounded px-1.5 py-0.5 text-xs font-mono">
+                    {children}
+                  </code>
+                )
+              },
+              pre: ({ children }) => (
+                <pre className="bg-[var(--color-surface)] rounded-lg p-3 mb-3 overflow-x-auto text-xs">
+                  {children}
+                </pre>
+              ),
+              a: ({ href, children }) => (
+                <a href={href} className="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+              blockquote: ({ children }) => (
+                <blockquote className="border-l-2 border-[var(--color-border)] pl-3 italic text-[var(--color-text-muted)]">
+                  {children}
+                </blockquote>
+              ),
+              hr: () => <hr className="border-[var(--color-border)] my-4" />,
+              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+              em: ({ children }) => <em className="italic">{children}</em>,
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
         </div>
       )}
     </div>
   )
 }
 
-// Thought line - inline display
-function ThoughtLine({ text }: { text: string }) {
-  const truncated = text.length > 80 ? text.slice(0, 77) + '...' : text
+// Thought block - expanded, collapsible
+function ThoughtBlock({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  const isLong = text.length > 200
+
   return (
-    <div className="flex items-center gap-2 text-sm text-[var(--color-text-muted)]">
-      <span className="opacity-60">⊛</span>
-      <span className="font-medium">Thinking</span>
-      <span className="rounded bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs">
-        {truncated}
-      </span>
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]/50 p-3">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="flex w-full items-center gap-2 text-left text-sm text-[var(--color-text-muted)]"
+      >
+        <span className="opacity-60">⊛</span>
+        <span className="font-medium">Thinking</span>
+        {isLong && (
+          <svg
+            className={`ml-auto h-4 w-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        )}
+      </button>
+
+      <div className={`mt-2 text-sm text-[var(--color-text-muted)] ${!isExpanded && isLong ? 'line-clamp-3' : ''}`}>
+        <ReactMarkdown
+          components={{
+            p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+            code: ({ children }) => (
+              <code className="bg-[var(--color-background)] rounded px-1 py-0.5 text-xs font-mono">
+                {children}
+              </code>
+            ),
+          }}
+        >
+          {text}
+        </ReactMarkdown>
+      </div>
     </div>
   )
 }
@@ -276,7 +352,7 @@ function ToolCallLine({ toolCall }: { toolCall: ToolCall }) {
       <span className="w-4 text-center font-mono opacity-60">{icon}</span>
 
       {/* Action */}
-      <span className={isRunning ? '' : ''}>{action}</span>
+      <span>{action}</span>
 
       {/* Detail in code pill */}
       {detail && (

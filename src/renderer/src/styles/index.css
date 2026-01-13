@@ -2,8 +2,11 @@
 
 /* Custom theme configuration */
 @theme {
-  --color-primary: #6366f1;
-  --color-primary-dark: #4f46e5;
+  --color-primary: #292929;
+  --color-primary-dark: #363636;
+  --color-primary-text: #ffffff;
+  --color-accent: #22c55e;
+  --color-accent-muted: rgba(34, 197, 94, 0.15);
   --color-background: #0f0f0f;
   --color-surface: #1a1a1a;
   --color-surface-hover: #252525;
