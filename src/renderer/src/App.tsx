@@ -15,6 +15,7 @@ import {
   RightPanelHeader,
   RightPanelContent,
 } from './components/layout'
+import { FileTree } from './components/FileTree'
 
 function AppContent(): React.JSX.Element {
   const {
@@ -122,15 +123,19 @@ function AppContent(): React.JSX.Element {
           />
         </main>
 
-        {/* Right panel - placeholder for future content */}
+        {/* Right panel - file tree */}
         <RightPanel>
           <RightPanelHeader>
-            <span className="text-sm font-medium">Details</span>
+            <span className="text-sm font-medium">All files</span>
           </RightPanelHeader>
-          <RightPanelContent>
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              <p className="text-sm">Right panel content</p>
-            </div>
+          <RightPanelContent className="p-0">
+            {currentSession ? (
+              <FileTree rootPath={currentSession.workingDirectory} />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground p-4">
+                <p className="text-sm">No session selected</p>
+              </div>
+            )}
           </RightPanelContent>
         </RightPanel>
       </SidebarProvider>
