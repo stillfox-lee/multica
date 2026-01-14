@@ -1,6 +1,6 @@
 /**
- * Agent setup / Settings component
- * Using shadcn/ui components
+ * Settings component - simplified agent selector
+ * Using Linear-style design: minimal UI, direct interactions
  */
 import { useState, useEffect } from 'react'
 import type { AgentCheckResult } from '../../../shared/electron-api'
@@ -10,13 +10,10 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from '@/components/ui/dialog'
-import { Button } from '@/components/ui/button'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
-import { Card } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Sun, Moon, Monitor, Check, Loader2, RefreshCw } from 'lucide-react'
+import { Sun, Moon, Monitor, ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface SettingsProps {
   isOpen: boolean
@@ -25,38 +22,19 @@ interface SettingsProps {
   onSwitchAgent: (agentId: string) => Promise<void>
 }
 
-// Agent icons mapping
-const AGENT_ICONS: Record<string, string> = {
-  'claude-code': '◉',
-  opencode: '⌘',
-  codex: '◈',
-  gemini: '✦',
-}
-
 type ThemeMode = 'light' | 'dark' | 'system'
 
 export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: SettingsProps) {
   const [agents, setAgents] = useState<AgentCheckResult[]>([])
   const [loading, setLoading] = useState(true)
   const [switching, setSwitching] = useState<string | null>(null)
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
   const { mode, setMode } = useTheme()
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedAgent(currentAgentId)
       loadAgents()
     }
-  }, [isOpen, currentAgentId])
-
-  useEffect(() => {
-    if (agents.length > 0 && !selectedAgent) {
-      const firstInstalled = agents.find(a => a.installed)
-      if (firstInstalled) {
-        setSelectedAgent(firstInstalled.id)
-      }
-    }
-  }, [agents, selectedAgent])
+  }, [isOpen])
 
   async function loadAgents() {
     setLoading(true)
@@ -70,18 +48,12 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
     }
   }
 
-  async function handleContinue() {
-    if (!selectedAgent || switching) return
+  async function handleSwitch(agentId: string) {
+    if (switching || agentId === currentAgentId) return
 
-    if (selectedAgent === currentAgentId) {
-      onClose()
-      return
-    }
-
-    setSwitching(selectedAgent)
+    setSwitching(agentId)
     try {
-      await onSwitchAgent(selectedAgent)
-      onClose()
+      await onSwitchAgent(agentId)
     } catch (err) {
       console.error('Failed to switch agent:', err)
     } finally {
@@ -89,13 +61,11 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
     }
   }
 
-  const installedCount = agents.filter(a => a.installed).length
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-5xl h-[85vh] max-h-[95vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl h-[85vh] max-h-[85vh] overflow-y-auto content-start">
         <DialogHeader>
-          <DialogTitle className="text-2xl">Settings</DialogTitle>
+          <DialogTitle>Settings</DialogTitle>
         </DialogHeader>
 
         {/* Appearance Section */}
@@ -105,148 +75,145 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
             type="single"
             value={mode}
             onValueChange={(value) => value && setMode(value as ThemeMode)}
-            className="w-full"
           >
-            <ToggleGroupItem value="light" className="flex-1 gap-2">
+            <ToggleGroupItem value="light" className="gap-2">
               <Sun className="h-4 w-4" />
               Light
             </ToggleGroupItem>
-            <ToggleGroupItem value="dark" className="flex-1 gap-2">
+            <ToggleGroupItem value="dark" className="gap-2">
               <Moon className="h-4 w-4" />
               Dark
             </ToggleGroupItem>
-            <ToggleGroupItem value="system" className="flex-1 gap-2">
+            <ToggleGroupItem value="system" className="gap-2">
               <Monitor className="h-4 w-4" />
               System
             </ToggleGroupItem>
           </ToggleGroup>
         </div>
 
+        {/* Separator */}
+        <div className="border-t" />
+
         {/* Agent Section */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Coding Agent</h2>
-          <p className="text-xs text-muted-foreground">
-            Select a coding agent. Agents use local authentication.
-          </p>
+          <h2 className="text-sm font-medium text-muted-foreground">AI Agent</h2>
 
           {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="flex items-center justify-center py-4">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-1">
               {agents.map((agent) => (
-                <AgentCard
+                <AgentItem
                   key={agent.id}
                   agent={agent}
-                  isSelected={agent.id === selectedAgent}
-                  onSelect={() => agent.installed && setSelectedAgent(agent.id)}
+                  isActive={agent.id === currentAgentId}
+                  isSwitching={switching === agent.id}
+                  onSwitch={handleSwitch}
                 />
               ))}
             </div>
           )}
         </div>
-
-        {/* Footer */}
-        <DialogFooter className="flex-row items-center justify-between border-t pt-4 sm:justify-between">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={loadAgents}
-            disabled={loading}
-          >
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
-
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button
-              onClick={handleContinue}
-              disabled={!selectedAgent || !!switching || installedCount === 0}
-            >
-              {switching ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Switching...
-                </>
-              ) : (
-                'Done'
-              )}
-            </Button>
-          </div>
-        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
-interface AgentCardProps {
+interface AgentItemProps {
   agent: AgentCheckResult
-  isSelected: boolean
-  onSelect: () => void
+  isActive: boolean
+  isSwitching: boolean
+  onSwitch: (agentId: string) => void
 }
 
-function AgentCard({ agent, isSelected, onSelect }: AgentCardProps) {
-  const icon = AGENT_ICONS[agent.id] || '◇'
+function AgentItem({ agent, isActive, isSwitching, onSwitch }: AgentItemProps) {
+  const [expanded, setExpanded] = useState(false)
+
+  const status = !agent.installed ? 'setup'
+    : isActive ? 'active'
+      : 'ready'
+
+  const handleRowClick = () => {
+    if (isSwitching) return
+
+    if (status === 'ready') {
+      onSwitch(agent.id)
+    } else {
+      setExpanded(!expanded)
+    }
+  }
+
+  const handleExpandClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setExpanded(!expanded)
+  }
 
   return (
-    <Card
-      onClick={onSelect}
-      className={`flex-row items-start gap-4 p-4 cursor-pointer transition-all ${
-        !agent.installed
-          ? 'opacity-50 cursor-not-allowed'
-          : isSelected
-            ? 'border-primary bg-primary/5'
-            : 'hover:border-muted-foreground'
-      }`}
+    <div
+      className={cn(
+        'rounded-md transition-colors duration-150 text-secondary-foreground hover:bg-muted/50 hover:text-foreground',
+        status === 'active' && 'bg-muted text-foreground',
+        status === 'setup' && 'opacity-60 hover:opacity-100'
+      )}
     >
-      {/* Icon */}
-      <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-muted text-lg">
-        {icon}
+      {/* Main row */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 cursor-pointer"
+        onClick={handleRowClick}
+      >
+        <button
+          onClick={handleExpandClick}
+          className="p-0.5 hover:bg-muted rounded text-muted-foreground"
+        >
+          {expanded ? (
+            <ChevronDown className="h-4 w-4" />
+          ) : (
+            <ChevronRight className="h-4 w-4" />
+          )}
+        </button>
+
+        <span className="flex-1 font-medium text-sm">{agent.name}</span>
+
+        <span className={cn(
+          'text-xs',
+          status === 'active' ? 'text-green-600' : 'text-muted-foreground'
+        )}>
+          {isSwitching ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : status === 'active' ? (
+            'Active'
+          ) : status === 'ready' ? (
+            'Ready'
+          ) : (
+            'Setup required'
+          )}
+        </span>
       </div>
 
-      {/* Content */}
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium">{agent.name}</span>
-          {agent.installed && (
-            <Badge variant="secondary" className="gap-1">
-              <Check className="h-3 w-3" />
-              installed
-            </Badge>
+      {/* Expanded content */}
+      {expanded && (
+        <div className="pl-9 pr-3 pb-2 text-sm text-muted-foreground">
+          {status === 'setup' && agent.installHint ? (
+            <p className="text-xs">
+              To install, run in Terminal: <code className="font-mono bg-muted px-1 py-0.5 rounded">{agent.installHint}</code>
+            </p>
+          ) : (
+            <p className="text-xs">{getAgentDescription(agent.id)}</p>
           )}
         </div>
-        <p className="mt-0.5 text-sm text-muted-foreground">
-          {getAgentDescription(agent.id)}
-        </p>
-        {!agent.installed && agent.installHint && (
-          <p className="mt-2 font-mono text-xs text-muted-foreground">
-            {agent.installHint}
-          </p>
-        )}
-      </div>
-
-      {/* Selection indicator */}
-      <div className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-        isSelected
-          ? 'border-primary bg-primary'
-          : 'border-muted-foreground/30'
-      }`}>
-        {isSelected && <Check className="h-3 w-3 text-primary-foreground" />}
-      </div>
-    </Card>
+      )}
+    </div>
   )
 }
 
 function getAgentDescription(agentId: string): string {
   const descriptions: Record<string, string> = {
-    'claude-code': 'Anthropic\'s Claude Code via ACP',
-    opencode: 'Terminal-based coding assistant',
-    codex: 'OpenAI\'s Codex CLI via ACP',
-    gemini: 'Google\'s Gemini CLI agent',
+    'claude-code': 'Best for complex reasoning tasks. By Anthropic.',
+    opencode: 'Fast and lightweight. Open source.',
+    codex: 'OpenAI\'s code assistant. By OpenAI.',
+    gemini: 'Google\'s AI assistant. By Google.',
   }
-  return descriptions[agentId] || 'Coding assistant'
+  return descriptions[agentId] || 'AI coding assistant'
 }

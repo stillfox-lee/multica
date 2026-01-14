@@ -73,8 +73,8 @@ function SessionItem({ session, isActive, onSelect, onDelete }: SessionItemProps
             onClick={onSelect}
             className={cn(
               "h-auto py-2 transition-colors duration-150",
-              "hover:bg-accent/50",
-              isActive && "bg-accent"
+              "hover:bg-sidebar-accent/50",
+              isActive && "bg-sidebar-accent"
             )}
           >
             {/* Error indicator - only show on error */}
@@ -97,7 +97,7 @@ function SessionItem({ session, isActive, onSelect, onDelete }: SessionItemProps
               }}
               className={cn(
                 "flex-shrink-0 rounded p-1 transition-opacity duration-150",
-                "hover:bg-accent/12 active:bg-accent/16",
+                "hover:bg-muted active:bg-muted",
                 isHovered ? "opacity-50 hover:opacity-100" : "opacity-0"
               )}
             >
