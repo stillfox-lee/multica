@@ -29,6 +29,7 @@ export interface AppActions {
   createSession: (cwd: string, agentId: string) => Promise<void>
   selectSession: (sessionId: string) => Promise<void>
   deleteSession: (sessionId: string) => Promise<void>
+  clearCurrentSession: () => void
 
   // Agent actions (per-session)
   sendPrompt: (content: string) => Promise<void>
@@ -224,6 +225,11 @@ export function useApp(): AppState & AppActions {
     }
   }, [currentSession, loadSessions, loadRunningStatus])
 
+  const clearCurrentSession = useCallback(() => {
+    setCurrentSession(null)
+    setSessionUpdates([])
+  }, [])
+
   const sendPrompt = useCallback(async (content: string) => {
     if (!currentSession) {
       setError('No active session')
@@ -282,6 +288,7 @@ export function useApp(): AppState & AppActions {
     createSession,
     selectSession,
     deleteSession,
+    clearCurrentSession,
     sendPrompt,
     cancelRequest,
     clearError,
