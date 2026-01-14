@@ -23,7 +23,7 @@ function AppContent(): React.JSX.Element {
     sessions,
     currentSession,
     sessionUpdates,
-    agentStatus,
+    runningSessionsStatus,
     isProcessing,
     error,
 
@@ -31,9 +31,6 @@ function AppContent(): React.JSX.Element {
     createSession,
     selectSession,
     deleteSession,
-    startAgent,
-    stopAgent,
-    switchAgent,
     sendPrompt,
     cancelRequest,
     clearError,
@@ -42,17 +39,18 @@ function AppContent(): React.JSX.Element {
   // New session dialog state
   const [showNewSession, setShowNewSession] = useState(false)
   const [newSessionCwd, setNewSessionCwd] = useState('')
+  const [selectedAgentId, setSelectedAgentId] = useState('opencode')
 
   // Settings dialog state
   const [showSettings, setShowSettings] = useState(false)
 
-  // Auto-show new session dialog when agent is running but no session
+  // Auto-show new session dialog when no sessions exist
   useEffect(() => {
-    if (agentStatus.state === 'running' && !currentSession && sessions.length === 0) {
+    if (!currentSession && sessions.length === 0) {
       setNewSessionCwd('')
       setShowNewSession(true)
     }
-  }, [agentStatus.state, currentSession, sessions.length])
+  }, [currentSession, sessions.length])
 
   const handleNewSession = () => {
     setNewSessionCwd('')
@@ -62,26 +60,21 @@ function AppContent(): React.JSX.Element {
   const handleCreateSession = async () => {
     if (!newSessionCwd.trim()) return
 
-    // Ensure agent is running
-    if (agentStatus.state !== 'running') {
-      await startAgent('opencode')
-    }
-
-    await createSession(newSessionCwd.trim())
+    // Create session with selected agent (agent starts automatically)
+    await createSession(newSessionCwd.trim(), selectedAgentId)
     setShowNewSession(false)
     setNewSessionCwd('')
   }
 
   const handleSelectSession = async (sessionId: string) => {
-    // Ensure agent is running
-    if (agentStatus.state !== 'running') {
-      const session = sessions.find((s) => s.id === sessionId)
-      if (session) {
-        await startAgent(session.agentId)
-      }
-    }
+    // Select session (agent starts automatically via resumeSession)
     await selectSession(sessionId)
   }
+
+  // Check if current session has a running agent
+  const isCurrentSessionRunning = currentSession
+    ? runningSessionsStatus.sessionIds.includes(currentSession.id)
+    : false
 
   return (
     <div className="flex h-screen flex-col bg-[var(--color-background)] text-[var(--color-text)]">
@@ -110,10 +103,9 @@ function AppContent(): React.JSX.Element {
         <main className="flex flex-1 flex-col">
           {/* Status bar */}
           <StatusBar
-            agentStatus={agentStatus}
+            runningSessionsCount={runningSessionsStatus.runningSessions}
             currentSession={currentSession}
-            onStartAgent={() => startAgent('opencode')}
-            onStopAgent={stopAgent}
+            isCurrentSessionRunning={isCurrentSessionRunning}
             onOpenSettings={() => setShowSettings(true)}
           />
 
@@ -130,7 +122,7 @@ function AppContent(): React.JSX.Element {
             onSend={sendPrompt}
             onCancel={cancelRequest}
             isProcessing={isProcessing}
-            disabled={!currentSession || agentStatus.state !== 'running'}
+            disabled={!currentSession}
           />
         </main>
       </SidebarProvider>
@@ -184,8 +176,8 @@ function AppContent(): React.JSX.Element {
       <Settings
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        currentAgentId={agentStatus.state === 'running' ? agentStatus.agentId : null}
-        onSwitchAgent={switchAgent}
+        defaultAgentId={selectedAgentId}
+        onSetDefaultAgent={setSelectedAgentId}
       />
     </div>
   )
