@@ -76,7 +76,7 @@ export function MessageInput({
             {/* Folder selection prompt */}
             <div className="flex items-center gap-3">
               <Folder className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <span className="text-muted-foreground flex-1">Select a folder to start...</span>
+              <span className="text-sm text-muted-foreground flex-1">Select a folder to start...</span>
               <Button
                 variant="outline"
                 size="sm"

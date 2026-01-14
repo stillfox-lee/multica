@@ -6,10 +6,13 @@ import * as React from 'react'
 import { PanelLeftIcon, PanelRightIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { useUIStore } from '@/stores/uiStore'
+import {
+  useUIStore,
+  RIGHT_PANEL_MIN_WIDTH,
+  RIGHT_PANEL_MAX_WIDTH,
+} from '@/stores/uiStore'
 import { useSidebar } from '@/components/ui/sidebar'
-
-const RIGHT_PANEL_WIDTH = '20rem' // 320px
+import { useResize } from '@/hooks/useResize'
 
 interface RightPanelProps {
   children: React.ReactNode
@@ -18,25 +21,47 @@ interface RightPanelProps {
 
 export function RightPanel({ children, className }: RightPanelProps) {
   const isOpen = useUIStore((s) => s.rightPanelOpen)
+  const rightPanelWidth = useUIStore((s) => s.rightPanelWidth)
+  const setRightPanelWidth = useUIStore((s) => s.setRightPanelWidth)
+
+  const { isResizing, handleProps } = useResize({
+    width: rightPanelWidth,
+    minWidth: RIGHT_PANEL_MIN_WIDTH,
+    maxWidth: RIGHT_PANEL_MAX_WIDTH,
+    onWidthChange: setRightPanelWidth,
+    direction: 'left',
+  })
 
   return (
     <div
       className={cn(
         'hidden lg:block',
-        'transition-[width] duration-200 ease-linear',
+        // Disable transition during resize for smoother dragging
+        !isResizing && 'transition-[width] duration-200 ease-linear',
         isOpen ? 'w-[var(--right-panel-width)]' : 'w-0'
       )}
-      style={{ '--right-panel-width': RIGHT_PANEL_WIDTH } as React.CSSProperties}
+      style={{ '--right-panel-width': `${rightPanelWidth}px` } as React.CSSProperties}
     >
       <div
         className={cn(
           'fixed inset-y-0 right-0 z-10 h-svh border-l bg-background',
-          'transition-[transform,opacity] duration-200 ease-linear',
+          // Disable transition during resize for smoother dragging
+          !isResizing && 'transition-[transform,opacity,width] duration-200 ease-linear',
           isOpen ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0',
           className
         )}
-        style={{ width: RIGHT_PANEL_WIDTH }}
+        style={{ width: `${rightPanelWidth}px` }}
       >
+        {/* Resize handle */}
+        {isOpen && (
+          <div
+            className={cn(
+              'absolute inset-y-0 left-0 w-1 hover:bg-primary/20 active:bg-primary/30',
+              isResizing && 'bg-primary/30'
+            )}
+            {...handleProps}
+          />
+        )}
         {children}
       </div>
     </div>
@@ -97,23 +122,12 @@ export function RightPanelHeader({
   children,
   ...props
 }: React.ComponentProps<'div'>) {
-  const toggle = useUIStore((s) => s.toggleRightPanel)
-
   return (
     <div
-      className={cn('group flex h-11 items-center border-b px-4', className)}
+      className={cn('flex h-11 items-center border-b px-4', className)}
       {...props}
     >
       {children}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="ml-auto size-7 opacity-0 group-hover:opacity-100 transition-opacity"
-        onClick={toggle}
-      >
-        <PanelRightIcon className="h-4 w-4" />
-        <span className="sr-only">Close Right Panel</span>
-      </Button>
     </div>
   )
 }
