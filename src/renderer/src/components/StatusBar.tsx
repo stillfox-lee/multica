@@ -2,7 +2,8 @@
  * Status bar component - shows session info and running status
  */
 import type { MulticaSession } from '../../../shared/types'
-import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar'
+import { useSidebar } from '@/components/ui/sidebar'
+import { SidebarTrigger, RightPanelTrigger } from './layout'
 import { cn } from '@/lib/utils'
 
 interface StatusBarProps {
@@ -43,12 +44,13 @@ export function StatusBar({
         )}
       </div>
 
-      {/* Right: Status */}
+      {/* Right: Status + Right panel trigger */}
       <div className="titlebar-no-drag flex items-center gap-3">
         <SessionStatusBadge
           isRunning={isCurrentSessionRunning}
           runningCount={runningSessionsCount}
         />
+        <RightPanelTrigger />
       </div>
     </div>
   )

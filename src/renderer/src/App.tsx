@@ -9,6 +9,12 @@ import { Modals } from './components/Modals'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useModalStore } from './stores/modalStore'
+import { useUIStore } from './stores/uiStore'
+import {
+  RightPanel,
+  RightPanelHeader,
+  RightPanelContent,
+} from './components/layout'
 
 function AppContent(): React.JSX.Element {
   const {
@@ -30,6 +36,10 @@ function AppContent(): React.JSX.Element {
   } = useApp()
 
   const openModal = useModalStore((s) => s.openModal)
+
+  // UI state
+  const sidebarOpen = useUIStore((s) => s.sidebarOpen)
+  const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
 
   // Default agent for new sessions
   const [defaultAgentId, setDefaultAgentId] = useState('opencode')
@@ -73,7 +83,11 @@ function AppContent(): React.JSX.Element {
       )}
 
       {/* Main content */}
-      <SidebarProvider className="flex-1 overflow-hidden">
+      <SidebarProvider
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        className="flex-1 overflow-hidden"
+      >
         {/* Sidebar */}
         <AppSidebar
           sessions={sessions}
@@ -83,7 +97,7 @@ function AppContent(): React.JSX.Element {
         />
 
         {/* Main area */}
-        <main className="flex flex-1 flex-col">
+        <main className="flex min-w-0 flex-1 flex-col">
           {/* Status bar */}
           <StatusBar
             runningSessionsCount={runningSessionsStatus.runningSessions}
@@ -107,6 +121,18 @@ function AppContent(): React.JSX.Element {
             disabled={!currentSession}
           />
         </main>
+
+        {/* Right panel - placeholder for future content */}
+        <RightPanel>
+          <RightPanelHeader>
+            <span className="text-sm font-medium">Details</span>
+          </RightPanelHeader>
+          <RightPanelContent>
+            <div className="flex h-full items-center justify-center text-muted-foreground">
+              <p className="text-sm">Right panel content</p>
+            </div>
+          </RightPanelContent>
+        </RightPanel>
       </SidebarProvider>
 
       {/* Global modals */}
