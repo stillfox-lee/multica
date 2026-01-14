@@ -76,22 +76,69 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
   )
 }
 
+// Content block types for preserving time order
+interface TextBlock {
+  type: 'text'
+  content: string
+}
+
+interface ThoughtBlock {
+  type: 'thought'
+  content: string
+}
+
+interface ToolCallBlock {
+  type: 'tool_call'
+  toolCall: ToolCall
+}
+
+type ContentBlock = TextBlock | ThoughtBlock | ToolCallBlock
+
 interface Message {
   role: 'user' | 'assistant'
-  content: string
-  thought: string
-  toolCalls: ToolCall[]
+  blocks: ContentBlock[]
 }
 
 function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
   const messages: Message[] = []
-  let currentAssistantContent = ''
-  let currentThought = ''
-  let currentToolCalls: ToolCall[] = []
+  let currentBlocks: ContentBlock[] = []
+  // Track tool calls by ID to update them in place
   const toolCallMap = new Map<string, ToolCall>()
+  // Track which tool call IDs we've added as blocks (to avoid duplicates)
+  const addedToolCallIds = new Set<string>()
+  // Track accumulated text and thought for merging consecutive chunks
+  let pendingText = ''
+  let pendingThought = ''
+
+  const flushPendingText = () => {
+    if (pendingText) {
+      currentBlocks.push({ type: 'text', content: pendingText })
+      pendingText = ''
+    }
+  }
+
+  const flushPendingThought = () => {
+    if (pendingThought) {
+      currentBlocks.push({ type: 'thought', content: pendingThought })
+      pendingThought = ''
+    }
+  }
+
+  const flushAssistantMessage = () => {
+    flushPendingThought()
+    flushPendingText()
+    if (currentBlocks.length > 0) {
+      messages.push({
+        role: 'assistant',
+        blocks: currentBlocks,
+      })
+      currentBlocks = []
+      toolCallMap.clear()
+      addedToolCallIds.clear()
+    }
+  }
 
   for (const stored of updates) {
-    // The stored.update is SessionNotification which has { sessionId, update }
     const notification = stored.update
     const update = notification?.update
     if (!update || !('sessionUpdate' in update)) {
@@ -101,48 +148,41 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
     switch (update.sessionUpdate) {
       case 'user_message' as string:
         // Flush any pending assistant message
-        if (currentAssistantContent || currentThought || currentToolCalls.length > 0) {
-          messages.push({
-            role: 'assistant',
-            content: currentAssistantContent,
-            thought: currentThought,
-            toolCalls: currentToolCalls,
-          })
-          currentAssistantContent = ''
-          currentThought = ''
-          currentToolCalls = []
-          toolCallMap.clear()
-        }
+        flushAssistantMessage()
         // Add user message
         {
           const userUpdate = update as { content?: { type: string; text: string } }
           if (userUpdate.content?.type === 'text') {
             messages.push({
               role: 'user',
-              content: userUpdate.content.text,
-              thought: '',
-              toolCalls: [],
+              blocks: [{ type: 'text', content: userUpdate.content.text }],
             })
           }
-        }
-        break
-
-      case 'agent_message_chunk':
-        // APPEND chunks instead of replacing
-        if ('content' in update && update.content?.type === 'text') {
-          currentAssistantContent += update.content.text
         }
         break
 
       case 'agent_thought_chunk':
         // Accumulate thought chunks
         if ('content' in update && update.content?.type === 'text') {
-          currentThought += update.content.text
+          pendingThought += update.content.text
+        }
+        break
+
+      case 'agent_message_chunk':
+        // Flush thought before text (thought usually comes first)
+        flushPendingThought()
+        // Accumulate text chunks
+        if ('content' in update && update.content?.type === 'text') {
+          pendingText += update.content.text
         }
         break
 
       case 'tool_call':
         if ('toolCallId' in update) {
+          // Flush pending text/thought before tool call to preserve order
+          flushPendingThought()
+          flushPendingText()
+
           const toolCall: ToolCall = {
             id: update.toolCallId,
             title: update.title || 'Tool Call',
@@ -155,57 +195,70 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
                 : undefined,
           }
           toolCallMap.set(update.toolCallId, toolCall)
-          currentToolCalls = Array.from(toolCallMap.values())
+
+          // Add tool call block if not already added
+          if (!addedToolCallIds.has(update.toolCallId)) {
+            currentBlocks.push({ type: 'tool_call', toolCall })
+            addedToolCallIds.add(update.toolCallId)
+          }
         }
         break
 
       case 'tool_call_update':
         if ('toolCallId' in update) {
           // Get or create the tool call entry
-          const existingTool = toolCallMap.get(update.toolCallId)
-          if (existingTool) {
-            if (update.status) existingTool.status = update.status
-            if (update.title) existingTool.title = update.title
+          let toolCall = toolCallMap.get(update.toolCallId)
+          if (toolCall) {
+            // Update existing tool call in place
+            if (update.status) toolCall.status = update.status
+            if (update.title) toolCall.title = update.title
             if (update.rawInput && Object.keys(update.rawInput).length > 0) {
-              existingTool.input = typeof update.rawInput === 'string'
+              toolCall.input = typeof update.rawInput === 'string'
                 ? update.rawInput
                 : JSON.stringify(update.rawInput, null, 2)
             }
             if (update.rawOutput) {
-              existingTool.output = typeof update.rawOutput === 'string'
+              toolCall.output = typeof update.rawOutput === 'string'
                 ? update.rawOutput
                 : JSON.stringify(update.rawOutput, null, 2)
             }
           } else {
             // Create new entry if we see update before the initial tool_call
-            const newTool: ToolCall = {
+            // Flush pending text/thought first to preserve order
+            flushPendingThought()
+            flushPendingText()
+
+            toolCall = {
               id: update.toolCallId,
               title: update.title || 'Tool Call',
               status: update.status || 'pending',
               kind: update.kind ?? undefined,
             }
             if (update.rawInput && Object.keys(update.rawInput).length > 0) {
-              newTool.input = typeof update.rawInput === 'string'
+              toolCall.input = typeof update.rawInput === 'string'
                 ? update.rawInput
                 : JSON.stringify(update.rawInput, null, 2)
             }
-            toolCallMap.set(update.toolCallId, newTool)
+            if (update.rawOutput) {
+              toolCall.output = typeof update.rawOutput === 'string'
+                ? update.rawOutput
+                : JSON.stringify(update.rawOutput, null, 2)
+            }
+            toolCallMap.set(update.toolCallId, toolCall)
+
+            // Add tool call block if not already added
+            if (!addedToolCallIds.has(update.toolCallId)) {
+              currentBlocks.push({ type: 'tool_call', toolCall })
+              addedToolCallIds.add(update.toolCallId)
+            }
           }
-          currentToolCalls = Array.from(toolCallMap.values())
         }
         break
     }
   }
 
   // Flush any remaining assistant content
-  if (currentAssistantContent || currentThought || currentToolCalls.length > 0) {
-    messages.push({
-      role: 'assistant',
-      content: currentAssistantContent.trim(),
-      thought: currentThought.trim(),
-      toolCalls: currentToolCalls,
-    })
-  }
+  flushAssistantMessage()
 
   return messages
 }
@@ -219,110 +272,118 @@ function MessageBubble({ message }: MessageBubbleProps) {
 
   // User message - bubble style
   if (isUser) {
+    // Get the text content from blocks
+    const textBlock = message.blocks.find((b): b is TextBlock => b.type === 'text')
     return (
       <div className="flex justify-end">
         <div className="max-w-[85%] rounded-lg bg-muted px-4 py-3 text-sm">
-          {message.content}
+          {textBlock?.content || ''}
         </div>
       </div>
     )
   }
 
-  // Assistant message - flat list style
+  // Assistant message - render blocks in order to preserve time sequence
   return (
     <div className="space-y-3">
-      {/* Thought - expanded, collapsible */}
-      {message.thought && (
-        <ThoughtBlock text={message.thought} />
-      )}
-
-      {/* Tool calls */}
-      {message.toolCalls.map((tc) => (
-        <ToolCallItem key={tc.id} toolCall={tc} />
-      ))}
-
-      {/* Text content with markdown */}
-      {message.content && (
-        <div className="prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              // Custom styling for markdown elements
-              p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
-              h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>,
-              h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3">{children}</h2>,
-              h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-3">{children}</h3>,
-              ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
-              ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
-              li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-              code: ({ className, children }) => {
-                const isBlock = className?.includes('language-')
-                if (isBlock) {
-                  return (
-                    <code className="block bg-muted rounded-lg p-3 text-xs font-mono overflow-x-auto">
-                      {children}
-                    </code>
-                  )
-                }
-                return (
-                  <code className="bg-muted rounded px-1.5 py-0.5 text-xs font-mono">
-                    {children}
-                  </code>
-                )
-              },
-              pre: ({ children }) => (
-                <pre className="bg-muted rounded-lg p-3 mb-3 overflow-x-auto text-xs">
-                  {children}
-                </pre>
-              ),
-              a: ({ href, children }) => (
-                <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
-                  {children}
-                </a>
-              ),
-              blockquote: ({ children }) => (
-                <blockquote className="border-l-2 border-border pl-3 italic text-muted-foreground">
-                  {children}
-                </blockquote>
-              ),
-              hr: () => <hr className="border-border my-4" />,
-              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-              em: ({ children }) => <em className="italic">{children}</em>,
-              // Table components for GFM table support
-              table: ({ children }) => (
-                <div className="overflow-x-auto mb-3">
-                  <table className="min-w-full border-collapse border border-border text-sm">
-                    {children}
-                  </table>
-                </div>
-              ),
-              thead: ({ children }) => (
-                <thead className="bg-muted/50">{children}</thead>
-              ),
-              tbody: ({ children }) => <tbody>{children}</tbody>,
-              tr: ({ children }) => (
-                <tr className="border-b border-border">{children}</tr>
-              ),
-              th: ({ children }) => (
-                <th className="border border-border px-3 py-2 text-left font-semibold">
-                  {children}
-                </th>
-              ),
-              td: ({ children }) => (
-                <td className="border border-border px-3 py-2">{children}</td>
-              ),
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-        </div>
-      )}
+      {message.blocks.map((block, idx) => {
+        switch (block.type) {
+          case 'thought':
+            return <ThoughtBlockView key={`thought-${idx}`} text={block.content} />
+          case 'tool_call':
+            return <ToolCallItem key={block.toolCall.id} toolCall={block.toolCall} />
+          case 'text':
+            return <TextContentBlock key={`text-${idx}`} content={block.content} />
+          default:
+            return null
+        }
+      })}
     </div>
   )
 }
 
-// Thought block - expanded, collapsible
-function ThoughtBlock({ text }: { text: string }) {
+// Text content block with markdown rendering
+function TextContentBlock({ content }: { content: string }) {
+  if (!content) return null
+
+  return (
+    <div className="prose prose-invert prose-sm max-w-none">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          p: ({ children }) => <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>,
+          h1: ({ children }) => <h1 className="text-xl font-bold mb-3 mt-4">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-lg font-bold mb-2 mt-3">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-base font-semibold mb-2 mt-3">{children}</h3>,
+          ul: ({ children }) => <ul className="list-disc pl-4 mb-3 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal pl-4 mb-3 space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+          code: ({ className, children }) => {
+            const isBlock = className?.includes('language-')
+            if (isBlock) {
+              return (
+                <code className="block bg-muted rounded-lg p-3 text-xs font-mono overflow-x-auto">
+                  {children}
+                </code>
+              )
+            }
+            return (
+              <code className="bg-muted rounded px-1.5 py-0.5 text-xs font-mono">
+                {children}
+              </code>
+            )
+          },
+          pre: ({ children }) => (
+            <pre className="bg-muted rounded-lg p-3 mb-3 overflow-x-auto text-xs">
+              {children}
+            </pre>
+          ),
+          a: ({ href, children }) => (
+            <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          ),
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-border pl-3 italic text-muted-foreground">
+              {children}
+            </blockquote>
+          ),
+          hr: () => <hr className="border-border my-4" />,
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          // Table components for GFM table support
+          table: ({ children }) => (
+            <div className="overflow-x-auto mb-3">
+              <table className="min-w-full border-collapse border border-border text-sm">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className="bg-muted/50">{children}</thead>
+          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr className="border-b border-border">{children}</tr>
+          ),
+          th: ({ children }) => (
+            <th className="border border-border px-3 py-2 text-left font-semibold">
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="border border-border px-3 py-2">{children}</td>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    </div>
+  )
+}
+
+// Thought block view - expanded, collapsible
+function ThoughtBlockView({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false)
   const isLong = text.length > 200
 
