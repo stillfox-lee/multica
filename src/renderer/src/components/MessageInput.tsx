@@ -2,6 +2,7 @@
  * Message input component
  */
 import { useState, useRef, useEffect } from 'react'
+import { Button } from '@/components/ui/button'
 
 interface MessageInputProps {
   onSend: (content: string) => void
@@ -65,20 +66,13 @@ export function MessageInput({
         />
 
         {isProcessing ? (
-          <button
-            onClick={onCancel}
-            className="flex-shrink-0 rounded-lg bg-red-600 px-4 py-2 font-medium text-white transition-colors hover:bg-red-700"
-          >
+          <Button variant="destructive" onClick={onCancel}>
             Cancel
-          </button>
+          </Button>
         ) : (
-          <button
-            onClick={handleSubmit}
-            disabled={disabled || !value.trim()}
-            className="flex-shrink-0 rounded-lg bg-[var(--color-primary)] px-4 py-2 font-medium text-white transition-colors hover:bg-[var(--color-primary-dark)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
+          <Button onClick={handleSubmit} disabled={disabled || !value.trim()}>
             Send
-          </button>
+          </Button>
         )}
       </div>
 
