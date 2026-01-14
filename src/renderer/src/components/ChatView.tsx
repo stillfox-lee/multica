@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { StoredSessionUpdate } from '../../../shared/types'
-import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown } from 'lucide-react'
 import { ToolCallItem, type ToolCall } from './ToolCallItem'
@@ -16,10 +15,9 @@ interface ChatViewProps {
   updates: StoredSessionUpdate[]
   isProcessing: boolean
   hasSession: boolean
-  onNewSession?: () => void
 }
 
-export function ChatView({ updates, isProcessing, hasSession, onNewSession }: ChatViewProps) {
+export function ChatView({ updates, isProcessing, hasSession }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const pendingPermission = usePermissionStore((s) => s.pendingRequest)
 
@@ -36,16 +34,11 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
       <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
           <h1 className="mb-2 text-3xl font-bold">Multica</h1>
-          <p className="mb-4 text-muted-foreground">
+          <p className="text-muted-foreground">
             {hasSession
               ? 'Start a conversation with your coding agent'
-              : 'Create a session to start chatting'}
+              : 'Select a folder below to start'}
           </p>
-          {!hasSession && onNewSession && (
-            <Button onClick={onNewSession}>
-              New Session
-            </Button>
-          )}
         </div>
       </div>
     )

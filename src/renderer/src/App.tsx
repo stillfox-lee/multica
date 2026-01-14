@@ -8,7 +8,6 @@ import { AppSidebar } from './components/AppSidebar'
 import { Modals } from './components/Modals'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SidebarProvider } from '@/components/ui/sidebar'
-import { useModalStore } from './stores/modalStore'
 import { useUIStore } from './stores/uiStore'
 import {
   RightPanel,
@@ -32,12 +31,11 @@ function AppContent(): React.JSX.Element {
     createSession,
     selectSession,
     deleteSession,
+    clearCurrentSession,
     sendPrompt,
     cancelRequest,
     clearError,
   } = useApp()
-
-  const openModal = useModalStore((s) => s.openModal)
 
   // UI state
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
@@ -47,12 +45,19 @@ function AppContent(): React.JSX.Element {
   const [defaultAgentId, setDefaultAgentId] = useState('opencode')
 
   const handleNewSession = () => {
-    openModal('newSession')
+    clearCurrentSession()
   }
 
   const handleCreateSession = async (cwd: string) => {
     // Create session with default agent (agent starts automatically)
     await createSession(cwd, defaultAgentId)
+  }
+
+  const handleSelectFolder = async () => {
+    const dir = await window.electronAPI.selectDirectory()
+    if (dir) {
+      await createSession(dir, defaultAgentId)
+    }
   }
 
   const handleSelectSession = async (sessionId: string) => {
@@ -105,7 +110,6 @@ function AppContent(): React.JSX.Element {
             updates={sessionUpdates}
             isProcessing={isProcessing}
             hasSession={!!currentSession}
-            onNewSession={handleNewSession}
           />
 
           {/* Input */}
@@ -114,6 +118,8 @@ function AppContent(): React.JSX.Element {
             onCancel={cancelRequest}
             isProcessing={isProcessing}
             disabled={!currentSession}
+            workingDirectory={currentSession?.workingDirectory}
+            onSelectFolder={handleSelectFolder}
           />
         </main>
 
