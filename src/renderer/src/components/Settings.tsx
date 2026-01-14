@@ -21,8 +21,8 @@ import { Sun, Moon, Monitor, Check, Loader2, RefreshCw } from 'lucide-react'
 interface SettingsProps {
   isOpen: boolean
   onClose: () => void
-  currentAgentId: string | null
-  onSwitchAgent: (agentId: string) => Promise<void>
+  defaultAgentId: string
+  onSetDefaultAgent: (agentId: string) => void
 }
 
 // Agent icons mapping
@@ -35,28 +35,18 @@ const AGENT_ICONS: Record<string, string> = {
 
 type ThemeMode = 'light' | 'dark' | 'system'
 
-export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: SettingsProps) {
+export function Settings({ isOpen, onClose, defaultAgentId, onSetDefaultAgent }: SettingsProps) {
   const [agents, setAgents] = useState<AgentCheckResult[]>([])
   const [loading, setLoading] = useState(true)
-  const [switching, setSwitching] = useState<string | null>(null)
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [selectedAgent, setSelectedAgent] = useState<string>(defaultAgentId)
   const { mode, setMode } = useTheme()
 
   useEffect(() => {
     if (isOpen) {
-      setSelectedAgent(currentAgentId)
+      setSelectedAgent(defaultAgentId)
       loadAgents()
     }
-  }, [isOpen, currentAgentId])
-
-  useEffect(() => {
-    if (agents.length > 0 && !selectedAgent) {
-      const firstInstalled = agents.find(a => a.installed)
-      if (firstInstalled) {
-        setSelectedAgent(firstInstalled.id)
-      }
-    }
-  }, [agents, selectedAgent])
+  }, [isOpen, defaultAgentId])
 
   async function loadAgents() {
     setLoading(true)
@@ -70,23 +60,11 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
     }
   }
 
-  async function handleContinue() {
-    if (!selectedAgent || switching) return
-
-    if (selectedAgent === currentAgentId) {
-      onClose()
-      return
+  function handleDone() {
+    if (selectedAgent !== defaultAgentId) {
+      onSetDefaultAgent(selectedAgent)
     }
-
-    setSwitching(selectedAgent)
-    try {
-      await onSwitchAgent(selectedAgent)
-      onClose()
-    } catch (err) {
-      console.error('Failed to switch agent:', err)
-    } finally {
-      setSwitching(null)
-    }
+    onClose()
   }
 
   const installedCount = agents.filter(a => a.installed).length
@@ -124,9 +102,9 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
 
         {/* Agent Section */}
         <div className="space-y-3">
-          <h2 className="text-sm font-medium text-muted-foreground">Coding Agent</h2>
+          <h2 className="text-sm font-medium text-muted-foreground">Default Agent</h2>
           <p className="text-xs text-muted-foreground">
-            Select a coding agent. Agents use local authentication.
+            Select the default agent for new sessions. Each session runs its own agent process.
           </p>
 
           {loading ? (
@@ -164,17 +142,10 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
               Cancel
             </Button>
             <Button
-              onClick={handleContinue}
-              disabled={!selectedAgent || !!switching || installedCount === 0}
+              onClick={handleDone}
+              disabled={!selectedAgent || installedCount === 0}
             >
-              {switching ? (
-                <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  Switching...
-                </>
-              ) : (
-                'Done'
-              )}
+              Done
             </Button>
           </div>
         </DialogFooter>
