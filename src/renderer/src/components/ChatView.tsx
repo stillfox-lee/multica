@@ -31,7 +31,7 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
       <div className="flex flex-1 items-center justify-center">
         <div className="text-center">
           <h1 className="mb-2 text-3xl font-bold">Multica</h1>
-          <p className="mb-4 text-[var(--color-text-muted)]">
+          <p className="mb-4 text-muted-foreground">
             {hasSession
               ? 'Start a conversation with your coding agent'
               : 'Create a session to start chatting'}
@@ -54,7 +54,7 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
         ))}
 
         {isProcessing && (
-          <div className="flex items-center gap-2 text-[var(--color-text-muted)]">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <LoadingDots />
             <span className="text-sm">Agent is thinking...</span>
           </div>
@@ -220,7 +220,7 @@ function MessageBubble({ message }: MessageBubbleProps) {
   if (isUser) {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg bg-[var(--color-surface)] px-4 py-3 text-sm">
+        <div className="max-w-[85%] rounded-lg bg-muted px-4 py-3 text-sm">
           {message.content}
         </div>
       </div>
@@ -257,33 +257,33 @@ function MessageBubble({ message }: MessageBubbleProps) {
                 const isBlock = className?.includes('language-')
                 if (isBlock) {
                   return (
-                    <code className="block bg-[var(--color-surface)] rounded-lg p-3 text-xs font-mono overflow-x-auto">
+                    <code className="block bg-muted rounded-lg p-3 text-xs font-mono overflow-x-auto">
                       {children}
                     </code>
                   )
                 }
                 return (
-                  <code className="bg-[var(--color-surface)] rounded px-1.5 py-0.5 text-xs font-mono">
+                  <code className="bg-muted rounded px-1.5 py-0.5 text-xs font-mono">
                     {children}
                   </code>
                 )
               },
               pre: ({ children }) => (
-                <pre className="bg-[var(--color-surface)] rounded-lg p-3 mb-3 overflow-x-auto text-xs">
+                <pre className="bg-muted rounded-lg p-3 mb-3 overflow-x-auto text-xs">
                   {children}
                 </pre>
               ),
               a: ({ href, children }) => (
-                <a href={href} className="text-[var(--color-accent)] hover:underline" target="_blank" rel="noopener noreferrer">
+                <a href={href} className="text-primary hover:underline" target="_blank" rel="noopener noreferrer">
                   {children}
                 </a>
               ),
               blockquote: ({ children }) => (
-                <blockquote className="border-l-2 border-[var(--color-border)] pl-3 italic text-[var(--color-text-muted)]">
+                <blockquote className="border-l-2 border-border pl-3 italic text-muted-foreground">
                   {children}
                 </blockquote>
               ),
-              hr: () => <hr className="border-[var(--color-border)] my-4" />,
+              hr: () => <hr className="border-border my-4" />,
               strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
               em: ({ children }) => <em className="italic">{children}</em>,
             }}
@@ -377,7 +377,7 @@ function ToolCallLine({ toolCall }: { toolCall: ToolCall }) {
   const isFailed = toolCall.status === 'failed'
 
   return (
-    <div className={`flex items-center gap-2 text-sm ${isFailed ? 'text-red-400' : 'text-[var(--color-text-muted)]'}`}>
+    <div className={`flex items-center gap-2 text-sm ${isFailed ? 'text-red-400' : 'text-muted-foreground'}`}>
       {/* Icon */}
       <span className="w-4 text-center font-mono opacity-60">{icon}</span>
 
@@ -386,7 +386,7 @@ function ToolCallLine({ toolCall }: { toolCall: ToolCall }) {
 
       {/* Detail in code pill */}
       {detail && (
-        <span className="rounded bg-[var(--color-surface)] px-2 py-0.5 font-mono text-xs truncate max-w-[300px]">
+        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs truncate max-w-[300px]">
           {detail}
         </span>
       )}

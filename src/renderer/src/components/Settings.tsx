@@ -93,7 +93,7 @@ export function Settings({ isOpen, onClose, currentAgentId, onSwitchAgent }: Set
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-5xl h-[85vh] max-h-[95vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-2xl">Settings</DialogTitle>
         </DialogHeader>
