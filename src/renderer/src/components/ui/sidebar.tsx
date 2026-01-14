@@ -6,8 +6,14 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { PanelLeftIcon } from "lucide-react"
 
 import { useIsMobile } from "@/hooks/use-mobile"
+import { useResize } from "@/hooks/useResize"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import {
+  useUIStore,
+  SIDEBAR_MIN_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+} from "@/stores/uiStore"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -27,7 +33,6 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
@@ -126,6 +131,9 @@ function SidebarProvider({
     [state, open, setOpen, isMobile, openMobile, setOpenMobile, toggleSidebar]
   )
 
+  // Get sidebar width from store
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth)
+
   return (
     <SidebarContext.Provider value={contextValue}>
       <TooltipProvider delayDuration={0}>
@@ -133,7 +141,7 @@ function SidebarProvider({
           data-slot="sidebar-wrapper"
           style={
             {
-              "--sidebar-width": SIDEBAR_WIDTH,
+              "--sidebar-width": `${sidebarWidth}px`,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
               ...style,
             } as React.CSSProperties
@@ -164,6 +172,17 @@ function Sidebar({
   collapsible?: "offcanvas" | "icon" | "none"
 }) {
   const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+
+  // Resize functionality
+  const sidebarWidth = useUIStore((s) => s.sidebarWidth)
+  const setSidebarWidth = useUIStore((s) => s.setSidebarWidth)
+  const { isResizing, handleProps } = useResize({
+    width: sidebarWidth,
+    minWidth: SIDEBAR_MIN_WIDTH,
+    maxWidth: SIDEBAR_MAX_WIDTH,
+    onWidthChange: setSidebarWidth,
+    direction: side === "left" ? "right" : "left",
+  })
 
   if (collapsible === "none") {
     return (
@@ -218,7 +237,9 @@ function Sidebar({
       <div
         data-slot="sidebar-gap"
         className={cn(
-          "relative w-(--sidebar-width) bg-transparent transition-[width] duration-200 ease-linear",
+          "relative w-(--sidebar-width) bg-transparent",
+          // Disable transition during resize for smoother dragging
+          !isResizing && "transition-[width] duration-200 ease-linear",
           "group-data-[collapsible=offcanvas]:w-0",
           "group-data-[side=right]:rotate-180",
           variant === "floating" || variant === "inset"
@@ -229,7 +250,9 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) transition-[left,right,width] duration-200 ease-linear md:flex",
+          "fixed inset-y-0 z-10 hidden h-svh w-(--sidebar-width) md:flex",
+          // Disable transition during resize for smoother dragging
+          !isResizing && "transition-[left,right,width] duration-200 ease-linear",
           side === "left"
             ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
             : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
@@ -248,6 +271,18 @@ function Sidebar({
         >
           {children}
         </div>
+        {/* Resize handle - only show when expanded */}
+        {state === "expanded" && (
+          <div
+            data-slot="sidebar-resize-handle"
+            className={cn(
+              "absolute inset-y-0 w-1 hover:bg-primary/20 active:bg-primary/30",
+              side === "left" ? "right-0" : "left-0",
+              isResizing && "bg-primary/30"
+            )}
+            {...handleProps}
+          />
+        )}
       </div>
     </div>
   )

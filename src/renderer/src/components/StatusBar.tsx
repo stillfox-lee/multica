@@ -25,7 +25,7 @@ export function StatusBar({
   return (
     <div className={cn(
       "titlebar-drag-region flex h-11 items-center justify-between px-4",
-      needsTrafficLightPadding && "pl-20"
+      needsTrafficLightPadding && "pl-24"
     )}>
       {/* Left: Sidebar trigger + Session info */}
       <div className="titlebar-no-drag flex items-center gap-3">
