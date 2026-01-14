@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import { ChevronDown } from 'lucide-react'
 import { ToolCallItem, type ToolCall } from './ToolCallItem'
+import { PermissionRequestItem } from './PermissionRequestItem'
+import { usePermissionStore } from '../stores/permissionStore'
 
 interface ChatViewProps {
   updates: StoredSessionUpdate[]
@@ -18,11 +20,12 @@ interface ChatViewProps {
 
 export function ChatView({ updates, isProcessing, hasSession, onNewSession }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const pendingPermission = usePermissionStore((s) => s.pendingRequest)
 
-  // Auto-scroll to bottom when new messages arrive
+  // Auto-scroll to bottom when new messages arrive or permission request changes
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [updates])
+  }, [updates, pendingPermission])
 
   // Group updates into messages
   const messages = groupUpdatesIntoMessages(updates)
@@ -54,7 +57,12 @@ export function ChatView({ updates, isProcessing, hasSession, onNewSession }: Ch
           <MessageBubble key={idx} message={msg} />
         ))}
 
-        {isProcessing && (
+        {/* Permission request - show in feed */}
+        {pendingPermission && (
+          <PermissionRequestItem request={pendingPermission} />
+        )}
+
+        {isProcessing && !pendingPermission && (
           <div className="flex items-center gap-2 text-muted-foreground">
             <LoadingDots />
             <span className="text-sm">Agent is thinking...</span>

@@ -63,6 +63,17 @@ const electronAPI: ElectronAPI = {
     ipcRenderer.on(IPC_CHANNELS.AGENT_ERROR, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_ERROR, listener)
   },
+
+  onPermissionRequest: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, request: unknown) =>
+      callback(request as Parameters<typeof callback>[0])
+    ipcRenderer.on(IPC_CHANNELS.PERMISSION_REQUEST, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.PERMISSION_REQUEST, listener)
+  },
+
+  respondToPermission: (response) => {
+    ipcRenderer.send(IPC_CHANNELS.PERMISSION_RESPONSE, response)
+  },
 }
 
 // Expose API to renderer via contextBridge

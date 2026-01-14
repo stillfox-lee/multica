@@ -7,6 +7,7 @@ import type {
   StoredSessionUpdate,
 } from '../../../shared/types'
 import type { RunningSessionsStatus } from '../../../shared/electron-api'
+import { usePermissionStore } from '../stores/permissionStore'
 
 export interface AppState {
   // Sessions
@@ -63,17 +64,25 @@ export function useApp(): AppState & AppActions {
     loadRunningStatus()
   }, [])
 
+  // Get current agentSessionId for stable reference in effect
+  const currentAgentSessionId = currentSession?.agentSessionId
+
   // Subscribe to agent events
   useEffect(() => {
     const unsubMessage = window.electronAPI.onAgentMessage((message) => {
+      // Log all incoming ACP messages for debugging
+      console.log('[ACP Message]', JSON.stringify(message, null, 2))
+
       // Only process messages for the current session
-      // message.sessionId is ACP Agent Session ID, compare with currentSession.agentSessionId
-      if (!currentSession || message.sessionId !== currentSession.agentSessionId) {
+      // message.sessionId is ACP Agent Session ID, compare with currentAgentSessionId
+      if (!currentAgentSessionId || message.sessionId !== currentAgentSessionId) {
+        console.log('[ACP] Ignoring message for different session:', message.sessionId, 'current:', currentAgentSessionId)
         return
       }
 
       const update = message.update
       const updateType = update?.sessionUpdate
+      console.log('[ACP Update Type]', updateType)
 
       // Handle streaming text accumulation for agent messages
       if (updateType === 'agent_message_chunk' && update.content?.type === 'text') {
@@ -136,12 +145,20 @@ export function useApp(): AppState & AppActions {
       setError(err.message)
     })
 
+    // Subscribe to permission requests
+    const setPendingRequest = usePermissionStore.getState().setPendingRequest
+    const unsubPermission = window.electronAPI.onPermissionRequest((request) => {
+      console.log('[useApp] Permission request received:', request)
+      setPendingRequest(request)
+    })
+
     return () => {
       unsubMessage()
       unsubStatus()
       unsubError()
+      unsubPermission()
     }
-  }, [currentSession])
+  }, [currentAgentSessionId])
 
   // Actions
   const loadSessions = useCallback(async () => {

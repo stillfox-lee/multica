@@ -41,6 +41,34 @@ export interface RunningSessionsStatus {
   processingSessionIds: string[] // Sessions currently handling a request
 }
 
+// Permission request types (from ACP)
+export interface PermissionOption {
+  optionId: string
+  name: string
+  kind: string
+}
+
+export interface PermissionToolCall {
+  toolCallId: string
+  title?: string
+  kind?: string
+  status?: string
+  rawInput?: unknown
+}
+
+export interface PermissionRequest {
+  requestId: string
+  sessionId: string
+  multicaSessionId: string // Multica session ID for matching
+  toolCall: PermissionToolCall
+  options: PermissionOption[]
+}
+
+export interface PermissionResponse {
+  requestId: string
+  optionId: string
+}
+
 export interface ElectronAPI {
   // Agent status (per-session agents)
   getAgentStatus(): Promise<RunningSessionsStatus>
@@ -72,6 +100,10 @@ export interface ElectronAPI {
   onAgentMessage(callback: (message: AgentMessage) => void): () => void
   onAgentStatus(callback: (status: RunningSessionsStatus) => void): () => void
   onAgentError(callback: (error: Error) => void): () => void
+  onPermissionRequest(callback: (request: PermissionRequest) => void): () => void
+
+  // Permission response
+  respondToPermission(response: PermissionResponse): void
 }
 
 declare global {

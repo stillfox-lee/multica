@@ -31,6 +31,10 @@ export const IPC_CHANNELS = {
   // File system (V2)
   FILE_APPROVAL_REQUEST: 'file:approval-request',
   FILE_APPROVAL_RESPONSE: 'file:approval-response',
+
+  // Permission request (ACP)
+  PERMISSION_REQUEST: 'permission:request',
+  PERMISSION_RESPONSE: 'permission:response',
 } as const
 
 export type IPCChannel = (typeof IPC_CHANNELS)[keyof typeof IPC_CHANNELS]
