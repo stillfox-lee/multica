@@ -33,6 +33,9 @@ const electronAPI: ElectronAPI = {
   updateSession: (sessionId: string, updates: Partial<MulticaSession>) =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_UPDATE, sessionId, updates),
 
+  switchSessionAgent: (sessionId: string, newAgentId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH_AGENT, sessionId, newAgentId),
+
   // Configuration
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET),
 
@@ -43,6 +46,17 @@ const electronAPI: ElectronAPI = {
 
   // System
   checkAgents: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_CHECK_AGENTS),
+  checkAgent: (agentId: string) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_CHECK_AGENT, agentId),
+
+  // Agent installation
+  installAgent: (agentId: string) => ipcRenderer.invoke(IPC_CHANNELS.AGENT_INSTALL, agentId),
+
+  onInstallProgress: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: unknown) =>
+      callback(progress as Parameters<typeof callback>[0])
+    ipcRenderer.on(IPC_CHANNELS.AGENT_INSTALL_PROGRESS, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.AGENT_INSTALL_PROGRESS, listener)
+  },
 
   // File tree
   listDirectory: (path: string) => ipcRenderer.invoke(IPC_CHANNELS.FS_LIST_DIRECTORY, path),

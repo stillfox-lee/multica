@@ -17,6 +17,7 @@ export const IPC_CHANNELS = {
   SESSION_RESUME: 'session:resume',
   SESSION_DELETE: 'session:delete',
   SESSION_UPDATE: 'session:update',
+  SESSION_SWITCH_AGENT: 'session:switch-agent',
   SESSION_META_UPDATED: 'session:meta-updated', // Push event when session metadata changes (e.g., agentSessionId)
 
   // Configuration
@@ -28,6 +29,11 @@ export const IPC_CHANNELS = {
 
   // System
   SYSTEM_CHECK_AGENTS: 'system:check-agents',
+  SYSTEM_CHECK_AGENT: 'system:check-agent',
+
+  // Agent installation
+  AGENT_INSTALL: 'agent:install',
+  AGENT_INSTALL_PROGRESS: 'agent:install-progress',
 
   // File system (V2)
   FILE_APPROVAL_REQUEST: 'file:approval-request',

@@ -9,6 +9,8 @@ import { Modals } from './components/Modals'
 import { ThemeProvider } from './contexts/ThemeContext'
 import { SidebarProvider } from '@/components/ui/sidebar'
 import { useUIStore } from './stores/uiStore'
+import { usePermissionStore } from './stores/permissionStore'
+import { useModalStore } from './stores/modalStore'
 import {
   RightPanel,
   RightPanelHeader,
@@ -26,7 +28,7 @@ function AppContent(): React.JSX.Element {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
-    error,
+    isSwitchingAgent,
 
     // Actions
     createSession,
@@ -35,12 +37,19 @@ function AppContent(): React.JSX.Element {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
-    clearError,
+    switchSessionAgent,
   } = useApp()
 
   // UI state
   const sidebarOpen = useUIStore((s) => s.sidebarOpen)
   const setSidebarOpen = useUIStore((s) => s.setSidebarOpen)
+
+  // Permission state - get the session ID that has a pending permission request
+  const pendingPermission = usePermissionStore((s) => s.pendingRequest)
+  const permissionPendingSessionId = pendingPermission?.multicaSessionId ?? null
+
+  // Modal actions
+  const openModal = useModalStore((s) => s.openModal)
 
   // Default agent for new sessions (persisted in localStorage)
   const [defaultAgentId, setDefaultAgentId] = useState(() => {
@@ -67,6 +76,13 @@ function AppContent(): React.JSX.Element {
   const handleSelectFolder = async () => {
     const dir = await window.electronAPI.selectDirectory()
     if (dir) {
+      // Check if the default agent is installed before creating session
+      const agentCheck = await window.electronAPI.checkAgent(defaultAgentId)
+      if (!agentCheck?.installed) {
+        // Agent not installed - open Settings with highlight and pending folder
+        openModal('settings', { highlightAgent: defaultAgentId, pendingFolder: dir })
+        return
+      }
       await createSession(dir, defaultAgentId)
     }
   }
@@ -83,16 +99,6 @@ function AppContent(): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      {/* Error banner */}
-      {error && (
-        <div className="flex items-center justify-between bg-red-600 px-4 py-2 text-sm text-white">
-          <span>{error}</span>
-          <button onClick={clearError} className="hover:underline">
-            Dismiss
-          </button>
-        </div>
-      )}
-
       {/* Main content */}
       <SidebarProvider
         open={sidebarOpen}
@@ -103,6 +109,8 @@ function AppContent(): React.JSX.Element {
         <AppSidebar
           sessions={sessions}
           currentSessionId={currentSession?.id ?? null}
+          processingSessionIds={runningSessionsStatus.processingSessionIds}
+          permissionPendingSessionId={permissionPendingSessionId}
           onSelect={handleSelectSession}
           onNewSession={handleNewSession}
         />
@@ -122,6 +130,8 @@ function AppContent(): React.JSX.Element {
             isProcessing={isProcessing}
             hasSession={!!currentSession}
             isInitializing={isInitializing}
+            currentSessionId={currentSession?.id ?? null}
+            onSelectFolder={handleSelectFolder}
           />
 
           {/* Input */}
@@ -131,7 +141,9 @@ function AppContent(): React.JSX.Element {
             isProcessing={isProcessing}
             disabled={!currentSession}
             workingDirectory={currentSession?.workingDirectory}
-            onSelectFolder={handleSelectFolder}
+            currentAgentId={currentSession?.agentId}
+            onAgentChange={switchSessionAgent}
+            isSwitchingAgent={isSwitchingAgent}
           />
         </main>
 
@@ -161,7 +173,7 @@ function AppContent(): React.JSX.Element {
       />
 
       {/* Toast notifications */}
-      <Toaster position="bottom-right" />
+      <Toaster position="top-center" />
     </div>
   )
 }

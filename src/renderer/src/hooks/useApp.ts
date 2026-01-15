@@ -10,6 +10,8 @@ import type { RunningSessionsStatus } from '../../../shared/electron-api'
 import type { MessageContent } from '../../../shared/types/message'
 import { usePermissionStore } from '../stores/permissionStore'
 import { useFileChangeStore } from '../stores/fileChangeStore'
+import { toast } from 'sonner'
+import { getErrorMessage } from '../utils/error'
 
 export interface AppState {
   // Sessions
@@ -23,7 +25,7 @@ export interface AppState {
   isInitializing: boolean
 
   // UI
-  error: string | null
+  isSwitchingAgent: boolean
 }
 
 export interface AppActions {
@@ -37,9 +39,8 @@ export interface AppActions {
   // Agent actions (per-session)
   sendPrompt: (content: MessageContent) => Promise<void>
   cancelRequest: () => Promise<void>
+  switchSessionAgent: (newAgentId: string) => Promise<void>
 
-  // UI actions
-  clearError: () => void
 }
 
 export function useApp(): AppState & AppActions {
@@ -52,32 +53,16 @@ export function useApp(): AppState & AppActions {
     sessionIds: [],
     processingSessionIds: [],
   })
-  const [error, setError] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
+  const [isSwitchingAgent, setIsSwitchingAgent] = useState(false)
 
   // Derive isProcessing from processingSessionIds (per-session isolation)
   const isProcessing = currentSession
     ? runningSessionsStatus.processingSessionIds.includes(currentSession.id)
     : false
 
-  // Periodic file tree refresh while agent is processing
-  useEffect(() => {
-    if (!isProcessing) return
-
-    const triggerRefresh = useFileChangeStore.getState().triggerRefresh
-    const REFRESH_INTERVAL = 2000 // Refresh every 2 seconds while processing
-
-    console.log('[FileChange] Starting periodic refresh (agent processing)')
-    const intervalId = setInterval(() => {
-      console.log('[FileChange] Periodic refresh triggered')
-      triggerRefresh()
-    }, REFRESH_INTERVAL)
-
-    return () => {
-      console.log('[FileChange] Stopping periodic refresh')
-      clearInterval(intervalId)
-    }
-  }, [isProcessing])
+  // Note: File tree refresh is triggered by tool completion (see onAgentMessage handler below)
+  // No need for periodic refresh - it causes performance issues
 
   // Load sessions on mount
   useEffect(() => {
@@ -169,7 +154,7 @@ export function useApp(): AppState & AppActions {
     })
 
     const unsubError = window.electronAPI.onAgentError((err) => {
-      setError(err.message)
+      toast.error(err.message)
     })
 
     // Subscribe to permission requests
@@ -193,7 +178,7 @@ export function useApp(): AppState & AppActions {
       const list = await window.electronAPI.listSessions()
       setSessions(list)
     } catch (err) {
-      setError(`Failed to load sessions: ${err}`)
+      toast.error(`Failed to load sessions: ${getErrorMessage(err)}`)
     }
   }, [])
 
@@ -208,7 +193,6 @@ export function useApp(): AppState & AppActions {
 
   const createSession = useCallback(async (cwd: string, agentId: string) => {
     try {
-      setError(null)
       setIsInitializing(true)
       const session = await window.electronAPI.createSession(cwd, agentId)
       setCurrentSession(session)
@@ -216,7 +200,7 @@ export function useApp(): AppState & AppActions {
       await loadSessions()
       await loadRunningStatus()
     } catch (err) {
-      setError(`Failed to create session: ${err}`)
+      toast.error(`Failed to create session: ${getErrorMessage(err)}`)
     } finally {
       setIsInitializing(false)
     }
@@ -224,7 +208,6 @@ export function useApp(): AppState & AppActions {
 
   const selectSession = useCallback(async (sessionId: string) => {
     try {
-      setError(null)
       // Load session without starting agent (lazy loading)
       const session = await window.electronAPI.loadSession(sessionId)
       setCurrentSession(session)
@@ -235,13 +218,12 @@ export function useApp(): AppState & AppActions {
         setSessionUpdates(data.updates)
       }
     } catch (err) {
-      setError(`Failed to select session: ${err}`)
+      toast.error(`Failed to select session: ${getErrorMessage(err)}`)
     }
   }, [])
 
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
-      setError(null)
       await window.electronAPI.deleteSession(sessionId)
       if (currentSession?.id === sessionId) {
         setCurrentSession(null)
@@ -250,7 +232,7 @@ export function useApp(): AppState & AppActions {
       await loadSessions()
       await loadRunningStatus()
     } catch (err) {
-      setError(`Failed to delete session: ${err}`)
+      toast.error(`Failed to delete session: ${getErrorMessage(err)}`)
     }
   }, [currentSession, loadSessions, loadRunningStatus])
 
@@ -261,13 +243,11 @@ export function useApp(): AppState & AppActions {
 
   const sendPrompt = useCallback(async (content: MessageContent) => {
     if (!currentSession) {
-      setError('No active session')
+      toast.error('No active session')
       return
     }
 
     try {
-      setError(null)
-
       // Add user message to updates (use a custom marker for UI display)
       // 'user_message' is a custom type not in ACP SDK, used for UI purposes only
       const userUpdate = {
@@ -284,7 +264,7 @@ export function useApp(): AppState & AppActions {
 
       await window.electronAPI.sendPrompt(currentSession.id, content)
     } catch (err) {
-      setError(`Failed to send prompt: ${err}`)
+      toast.error(`Failed to send prompt: ${getErrorMessage(err)}`)
     }
   }, [currentSession])
 
@@ -294,13 +274,28 @@ export function useApp(): AppState & AppActions {
     try {
       await window.electronAPI.cancelRequest(currentSession.id)
     } catch (err) {
-      setError(`Failed to cancel: ${err}`)
+      toast.error(`Failed to cancel: ${getErrorMessage(err)}`)
     }
   }, [currentSession])
 
-  const clearError = useCallback(() => {
-    setError(null)
-  }, [])
+  const switchSessionAgent = useCallback(async (newAgentId: string) => {
+    if (!currentSession) {
+      toast.error('No active session')
+      return
+    }
+
+    try {
+      setIsSwitchingAgent(true)
+      const updatedSession = await window.electronAPI.switchSessionAgent(currentSession.id, newAgentId)
+      setCurrentSession(updatedSession)
+      await loadRunningStatus()
+      toast.success(`Switched to ${newAgentId}`)
+    } catch (err) {
+      toast.error(`Failed to switch agent: ${getErrorMessage(err)}`)
+    } finally {
+      setIsSwitchingAgent(false)
+    }
+  }, [currentSession, loadRunningStatus])
 
   return {
     // State
@@ -310,7 +305,7 @@ export function useApp(): AppState & AppActions {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
-    error,
+    isSwitchingAgent,
 
     // Actions
     loadSessions,
@@ -320,6 +315,6 @@ export function useApp(): AppState & AppActions {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
-    clearError,
+    switchSessionAgent,
   }
 }

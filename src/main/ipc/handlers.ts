@@ -2,10 +2,11 @@
  * IPC handlers for main process
  * Registers all IPC handlers for communication with renderer process
  */
-import { ipcMain, dialog, clipboard, shell } from 'electron'
+import { ipcMain, dialog, clipboard, shell, BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-channels'
 import { DEFAULT_AGENTS } from '../config/defaults'
-import { checkAgents } from '../utils/agent-check'
+import { checkAgents, checkAgent } from '../utils/agent-check'
+import { installAgent } from '../utils/agent-install'
 import type { Conductor } from '../conductor/Conductor'
 import type { ListSessionsOptions, MulticaSession } from '../../shared/types'
 import type { FileTreeNode, DetectedApp } from '../../shared/electron-api'
@@ -46,17 +47,49 @@ function isValidPath(inputPath: string): boolean {
   return resolved === inputPath
 }
 
+/**
+ * Extract error message from various error types
+ * Handles ACP SDK errors which are plain objects with message property
+ */
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message
+  }
+  if (err && typeof err === 'object') {
+    if ('message' in err && typeof (err as Record<string, unknown>).message === 'string') {
+      return (err as Record<string, unknown>).message as string
+    }
+    try {
+      return JSON.stringify(err)
+    } catch {
+      return 'Unknown error'
+    }
+  }
+  return String(err)
+}
+
 export function registerIPCHandlers(conductor: Conductor): void {
   // --- Agent handlers (per-session) ---
 
-  ipcMain.handle(IPC_CHANNELS.AGENT_PROMPT, async (_event, sessionId: string, content: MessageContent) => {
-    const stopReason = await conductor.sendPrompt(sessionId, content)
-    return { stopReason }
-  })
+  ipcMain.handle(
+    IPC_CHANNELS.AGENT_PROMPT,
+    async (_event, sessionId: string, content: MessageContent) => {
+      try {
+        const stopReason = await conductor.sendPrompt(sessionId, content)
+        return { stopReason }
+      } catch (err) {
+        throw new Error(extractErrorMessage(err))
+      }
+    }
+  )
 
   ipcMain.handle(IPC_CHANNELS.AGENT_CANCEL, async (_event, sessionId: string) => {
-    await conductor.cancelRequest(sessionId)
-    return { success: true }
+    try {
+      await conductor.cancelRequest(sessionId)
+      return { success: true }
+    } catch (err) {
+      throw new Error(extractErrorMessage(err))
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.AGENT_STATUS, async () => {
@@ -66,7 +99,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
     return {
       runningSessions: runningSessionIds.length,
       sessionIds: runningSessionIds,
-      processingSessionIds,
+      processingSessionIds
     }
   })
 
@@ -75,11 +108,15 @@ export function registerIPCHandlers(conductor: Conductor): void {
   ipcMain.handle(
     IPC_CHANNELS.SESSION_CREATE,
     async (_event, workingDirectory: string, agentId: string) => {
-      const config = DEFAULT_AGENTS[agentId]
-      if (!config) {
-        throw new Error(`Unknown agent: ${agentId}`)
+      try {
+        const config = DEFAULT_AGENTS[agentId]
+        if (!config) {
+          throw new Error(`Unknown agent: ${agentId}`)
+        }
+        return await conductor.createSession(workingDirectory, config)
+      } catch (err) {
+        throw new Error(extractErrorMessage(err))
       }
-      return conductor.createSession(workingDirectory, config)
     }
   )
 
@@ -111,6 +148,17 @@ export function registerIPCHandlers(conductor: Conductor): void {
     }
   )
 
+  ipcMain.handle(
+    IPC_CHANNELS.SESSION_SWITCH_AGENT,
+    async (_event, sessionId: string, newAgentId: string) => {
+      try {
+        return await conductor.switchSessionAgent(sessionId, newAgentId)
+      } catch (err) {
+        throw new Error(extractErrorMessage(err))
+      }
+    }
+  )
+
   // --- Configuration handlers ---
 
   ipcMain.handle(IPC_CHANNELS.CONFIG_GET, async () => {
@@ -120,8 +168,8 @@ export function registerIPCHandlers(conductor: Conductor): void {
       agents: DEFAULT_AGENTS,
       ui: {
         theme: 'system',
-        fontSize: 14,
-      },
+        fontSize: 14
+      }
     }
   })
 
@@ -136,7 +184,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
   ipcMain.handle(IPC_CHANNELS.DIALOG_SELECT_DIRECTORY, async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Working Directory',
+      title: 'Select Working Directory'
     })
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -150,6 +198,24 @@ export function registerIPCHandlers(conductor: Conductor): void {
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK_AGENTS, async () => {
     return checkAgents()
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_CHECK_AGENT, async (_event, agentId: string) => {
+    return checkAgent(agentId)
+  })
+
+  // --- Agent installation handler ---
+
+  ipcMain.handle(IPC_CHANNELS.AGENT_INSTALL, async (_event, agentId: string) => {
+    try {
+      const window = BrowserWindow.getFocusedWindow()
+      if (!window) {
+        throw new Error('No focused window')
+      }
+      return await installAgent({ window, agentId })
+    } catch (err) {
+      throw new Error(extractErrorMessage(err))
+    }
   })
 
   // --- File tree handlers ---
@@ -171,7 +237,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
           name: entry.name,
           path: fullPath,
           type: isDirectory ? 'directory' : 'file',
-          extension: ext || undefined,
+          extension: ext || undefined
         }
       })
 
@@ -191,9 +257,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.FS_DETECT_APPS, async () => {
-    const apps: DetectedApp[] = [
-      { id: 'finder', name: 'Finder' },
-    ]
+    const apps: DetectedApp[] = [{ id: 'finder', name: 'Finder' }]
 
     // App definitions to check
     const appChecks = [
@@ -201,7 +265,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
       { id: 'vscode', name: 'VS Code', appName: 'Visual Studio Code.app' },
       { id: 'xcode', name: 'Xcode', appName: 'Xcode.app' },
       { id: 'ghostty', name: 'Ghostty', appName: 'Ghostty.app' },
-      { id: 'iterm', name: 'iTerm', appName: 'iTerm.app' },
+      { id: 'iterm', name: 'iTerm', appName: 'iTerm.app' }
     ]
 
     const homeDir = process.env.HOME || ''
@@ -235,7 +299,7 @@ export function registerIPCHandlers(conductor: Conductor): void {
 
       try {
         // Helper to get directory for terminal apps
-        const getDir = (p: string) => fs.statSync(p).isDirectory() ? p : path.dirname(p)
+        const getDir = (p: string) => (fs.statSync(p).isDirectory() ? p : path.dirname(p))
 
         switch (appId) {
           case 'finder':

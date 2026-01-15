@@ -2,9 +2,10 @@
  * Message input component with image upload support
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { ArrowUp, Square, Folder, Paperclip, X } from 'lucide-react'
+import { ArrowUp, Square, Paperclip, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { AgentSelector } from './AgentSelector'
 import type { MessageContent, ImageContentItem } from '../../../shared/types/message'
 
 interface MessageInputProps {
@@ -14,7 +15,9 @@ interface MessageInputProps {
   disabled: boolean
   placeholder?: string
   workingDirectory?: string | null
-  onSelectFolder: () => Promise<void>
+  currentAgentId?: string
+  onAgentChange?: (agentId: string) => void
+  isSwitchingAgent?: boolean
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -27,18 +30,15 @@ export function MessageInput({
   disabled,
   placeholder = 'Type a message...',
   workingDirectory,
-  onSelectFolder,
+  currentAgentId,
+  onAgentChange,
+  isSwitchingAgent = false,
 }: MessageInputProps) {
   const [value, setValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
   const [images, setImages] = useState<ImageContentItem[]>([])
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-
-  // Get folder name from path
-  const folderName = workingDirectory
-    ? workingDirectory.split('/').filter(Boolean).pop() || workingDirectory
-    : null
 
   // Auto-resize textarea
   useEffect(() => {
@@ -167,43 +167,16 @@ export function MessageInput({
   const canSubmit = !disabled && (value.trim().length > 0 || images.length > 0)
   const hasFolder = !!workingDirectory
 
-  // Render folder selection mode when no folder is selected
+  // Don't render when no folder is selected
   if (!hasFolder) {
-    return (
-      <div className="p-4">
-        <div className="mx-auto max-w-3xl">
-          <div className="bg-secondary/50 hover:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
-            {/* Folder selection prompt */}
-            <div className="flex items-center gap-3">
-              <Folder className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <span className="text-sm text-muted-foreground flex-1">Select a folder to start...</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onSelectFolder}
-                className="flex-shrink-0"
-              >
-                Browse
-              </Button>
-            </div>
-
-            {/* Bottom toolbar */}
-            <div className="flex items-center justify-end pt-3 mt-3 border-t border-border/50">
-              <Button size="icon" disabled className="h-8 w-8 rounded-full">
-                <ArrowUp className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    )
+    return null
   }
 
   // Normal chat input mode
   return (
     <div className="p-4">
       <div className="mx-auto max-w-3xl">
-        <div className="bg-secondary/50 hover:bg-secondary focus-within:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
+        <div className="bg-card transition-colors duration-200 rounded-xl p-3 border border-border">
           {/* Image previews */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border/50">
@@ -255,21 +228,17 @@ export function MessageInput({
 
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between pt-2">
-            {/* Left side: folder and image button */}
+            {/* Left side: agent selector, folder, and image button */}
             <div className="flex items-center gap-1">
-              {/* Folder indicator */}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={onSelectFolder}
-                    className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-background/50"
-                  >
-                    <Folder className="h-3.5 w-3.5" />
-                    <span className="max-w-[150px] truncate">{folderName}</span>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">Change folder</TooltipContent>
-              </Tooltip>
+              {/* Agent selector */}
+              {currentAgentId && onAgentChange && (
+                <AgentSelector
+                  currentAgentId={currentAgentId}
+                  onAgentChange={onAgentChange}
+                  disabled={isProcessing}
+                  isSwitching={isSwitchingAgent}
+                />
+              )}
 
               {/* Image upload button */}
               <Tooltip>

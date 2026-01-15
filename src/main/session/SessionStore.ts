@@ -12,7 +12,7 @@
 import { join } from 'path'
 import { homedir } from 'os'
 import { existsSync, mkdirSync } from 'fs'
-import { readFile, writeFile, unlink } from 'fs/promises'
+import { readFile, writeFile, unlink, rename } from 'fs/promises'
 import { randomUUID } from 'crypto'
 import type { SessionNotification } from '@agentclientprotocol/sdk'
 import type {
@@ -47,6 +47,9 @@ export class SessionStore {
   // In-memory cache
   private sessionsIndex: Map<string, MulticaSession> = new Map()
   private loadedSessions: Map<string, SessionData> = new Map()
+
+  // Write locks to prevent concurrent writes
+  private writeLocks: Map<string, Promise<void>> = new Map()
 
   constructor(basePath?: string) {
     this.basePath = basePath ?? getDefaultStoragePath()
@@ -209,6 +212,9 @@ export class SessionStore {
     if (updates.agentSessionId !== undefined) {
       sessionData.session.agentSessionId = updates.agentSessionId
     }
+    if (updates.agentId !== undefined) {
+      sessionData.session.agentId = updates.agentId
+    }
 
     // Update timestamp
     sessionData.session.updatedAt = new Date().toISOString()
@@ -278,8 +284,10 @@ export class SessionStore {
   }
 
   private async saveIndex(): Promise<void> {
-    const sessions = Array.from(this.sessionsIndex.values())
-    await writeFile(this.indexPath, JSON.stringify(sessions, null, 2))
+    await this.atomicWrite('__index__', this.indexPath, async () => {
+      const sessions = Array.from(this.sessionsIndex.values())
+      return JSON.stringify(sessions, null, 2)
+    })
   }
 
   private async saveSessionData(sessionId: string): Promise<void> {
@@ -287,7 +295,55 @@ export class SessionStore {
     if (!sessionData) return
 
     const dataPath = this.getSessionDataPath(sessionId)
-    await writeFile(dataPath, JSON.stringify(sessionData, null, 2))
+    await this.atomicWrite(sessionId, dataPath, async () => {
+      return JSON.stringify(sessionData, null, 2)
+    })
+  }
+
+  /**
+   * Atomic write with lock to prevent concurrent writes and corruption
+   */
+  private async atomicWrite(
+    lockKey: string,
+    filePath: string,
+    getData: () => Promise<string>
+  ): Promise<void> {
+    // Wait for any pending write to complete
+    const pendingWrite = this.writeLocks.get(lockKey)
+    if (pendingWrite) {
+      await pendingWrite
+    }
+
+    // Create new write promise
+    const writePromise = (async () => {
+      const tempPath = `${filePath}.tmp.${Date.now()}`
+      try {
+        const data = await getData()
+        await writeFile(tempPath, data)
+        await rename(tempPath, filePath)
+      } catch (err) {
+        // Clean up temp file on error
+        try {
+          if (existsSync(tempPath)) {
+            await unlink(tempPath)
+          }
+        } catch {
+          // Ignore cleanup errors
+        }
+        throw err
+      }
+    })()
+
+    this.writeLocks.set(lockKey, writePromise)
+
+    try {
+      await writePromise
+    } finally {
+      // Only delete if this is still our promise
+      if (this.writeLocks.get(lockKey) === writePromise) {
+        this.writeLocks.delete(lockKey)
+      }
+    }
   }
 
   private countMessages(updates: StoredSessionUpdate[]): number {
