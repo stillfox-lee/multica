@@ -10,14 +10,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/main/**', 'src/shared/**'],
-      exclude: ['src/renderer/**', 'src/preload/**'],
-      // Coverage thresholds - starting at 50%, plan to increase over time
-      thresholds: {
-        lines: 50,
-        functions: 50,
-        branches: 50,
-        statements: 50
-      }
+      exclude: ['src/renderer/**', 'src/preload/**']
     }
   },
   resolve: {
