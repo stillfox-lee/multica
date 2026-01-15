@@ -1,3 +1,5 @@
 export { Conductor } from './Conductor'
 export { AgentProcess } from './AgentProcess'
+export { createAcpClient } from './AcpClientFactory'
 export type { SessionUpdateCallback, ConductorEvents } from './Conductor'
+export type { AcpClientCallbacks, AcpClientFactoryOptions } from './AcpClientFactory'
