@@ -92,27 +92,35 @@ export class Conductor {
     cwd: string,
     isResumed: boolean = false
   ): Promise<{ connection: ClientSideConnection; agentSessionId: string }> {
+    const startTime = Date.now()
     console.log(`[Conductor] Starting agent for session ${sessionId}: ${config.name}`)
 
     // Start the agent subprocess
     const agentProcess = new AgentProcess(config)
+    const t1 = Date.now()
     await agentProcess.start()
+    console.log(`[Conductor] [TIMING] AgentProcess.start() took ${Date.now() - t1}ms`)
 
     // Create ACP connection using the SDK
+    const t2 = Date.now()
     const stream = ndJsonStream(
       agentProcess.getStdinWeb(),
       agentProcess.getStdoutWeb()
     )
+    console.log(`[Conductor] [TIMING] ndJsonStream() took ${Date.now() - t2}ms`)
 
     // Create client-side connection with our Client implementation
+    const t3 = Date.now()
     const connection = new ClientSideConnection(
       (_agent) => this.createClient(sessionId),
       stream
     )
+    console.log(`[Conductor] [TIMING] ClientSideConnection() took ${Date.now() - t3}ms`)
 
     console.log(`[Conductor] Sending ACP initialize request (protocol v${PROTOCOL_VERSION})`)
 
     // Initialize the ACP connection
+    const t4 = Date.now()
     const initResult = await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
@@ -123,16 +131,20 @@ export class Conductor {
         terminal: false,
       },
     })
+    console.log(`[Conductor] [TIMING] connection.initialize() took ${Date.now() - t4}ms`)
 
     console.log(`[Conductor] ACP connected to ${config.name}`)
     console.log(`[Conductor]   Protocol version: ${initResult.protocolVersion}`)
     console.log(`[Conductor]   Agent info:`, initResult.agentInfo)
 
     // Create ACP session
+    const t5 = Date.now()
     const acpResult = await connection.newSession({
       cwd,
       mcpServers: [],
     })
+    console.log(`[Conductor] [TIMING] connection.newSession() took ${Date.now() - t5}ms`)
+    console.log(`[Conductor] [TIMING] Total startAgentForSession() took ${Date.now() - startTime}ms`)
 
     // Handle agent process exit
     agentProcess.onExit((code, signal) => {

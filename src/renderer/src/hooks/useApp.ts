@@ -18,6 +18,7 @@ export interface AppState {
   // Agent (per-session)
   runningSessionsStatus: RunningSessionsStatus
   isProcessing: boolean
+  isInitializing: boolean
 
   // UI
   error: string | null
@@ -50,6 +51,7 @@ export function useApp(): AppState & AppActions {
     processingSessionIds: [],
   })
   const [error, setError] = useState<string | null>(null)
+  const [isInitializing, setIsInitializing] = useState(false)
 
   // Derive isProcessing from processingSessionIds (per-session isolation)
   const isProcessing = currentSession
@@ -152,6 +154,7 @@ export function useApp(): AppState & AppActions {
   const createSession = useCallback(async (cwd: string, agentId: string) => {
     try {
       setError(null)
+      setIsInitializing(true)
       const session = await window.electronAPI.createSession(cwd, agentId)
       setCurrentSession(session)
       setSessionUpdates([])
@@ -159,6 +162,8 @@ export function useApp(): AppState & AppActions {
       await loadRunningStatus()
     } catch (err) {
       setError(`Failed to create session: ${err}`)
+    } finally {
+      setIsInitializing(false)
     }
   }, [loadSessions, loadRunningStatus])
 
@@ -249,6 +254,7 @@ export function useApp(): AppState & AppActions {
     sessionUpdates,
     runningSessionsStatus,
     isProcessing,
+    isInitializing,
     error,
 
     // Actions

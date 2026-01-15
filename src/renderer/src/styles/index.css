@@ -181,3 +181,17 @@ body {
     box-shadow: 0 0 0 3px oklch(0.6 0.2 250 / 0);
   }
 }
+
+/* Session initializing shimmer animation */
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 1.5s ease-in-out infinite;
+}

@@ -18,16 +18,20 @@ export class AgentProcess {
    * Start the agent subprocess
    */
   async start(): Promise<void> {
+    const startTime = Date.now()
+
     if (this.process) {
       throw new Error('Agent process already running')
     }
 
     const { command, args, env } = this.config
 
+    const t1 = Date.now()
     this.process = spawn(command, args, {
       stdio: ['pipe', 'pipe', 'inherit'], // stdin, stdout piped; stderr inherited
       env: { ...process.env, ...env },
     })
+    console.log(`[AgentProcess] [TIMING] spawn() took ${Date.now() - t1}ms`)
 
     this.process.on('exit', (code, signal) => {
       this.exitCallbacks.forEach((cb) => cb(code, signal))
@@ -40,6 +44,7 @@ export class AgentProcess {
     })
 
     // Wait a bit to ensure process started successfully
+    const t2 = Date.now()
     await new Promise<void>((resolve, reject) => {
       const timeout = setTimeout(() => {
         if (this.process) {
@@ -54,7 +59,9 @@ export class AgentProcess {
         reject(err)
       })
     })
+    console.log(`[AgentProcess] [TIMING] startup wait took ${Date.now() - t2}ms`)
 
+    console.log(`[AgentProcess] [TIMING] Total start() took ${Date.now() - startTime}ms`)
     console.log(`[AgentProcess] Started ${command} ${args.join(' ')} (pid: ${this.process.pid})`)
   }
 

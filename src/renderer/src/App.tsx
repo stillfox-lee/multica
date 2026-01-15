@@ -25,6 +25,7 @@ function AppContent(): React.JSX.Element {
     sessionUpdates,
     runningSessionsStatus,
     isProcessing,
+    isInitializing,
     error,
 
     // Actions
@@ -120,6 +121,7 @@ function AppContent(): React.JSX.Element {
             updates={sessionUpdates}
             isProcessing={isProcessing}
             hasSession={!!currentSession}
+            isInitializing={isInitializing}
           />
 
           {/* Input */}

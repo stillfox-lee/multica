@@ -15,9 +15,10 @@ interface ChatViewProps {
   updates: StoredSessionUpdate[]
   isProcessing: boolean
   hasSession: boolean
+  isInitializing: boolean
 }
 
-export function ChatView({ updates, isProcessing, hasSession }: ChatViewProps) {
+export function ChatView({ updates, isProcessing, hasSession, isInitializing }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
   const pendingPermission = usePermissionStore((s) => s.pendingRequest)
 
@@ -28,6 +29,11 @@ export function ChatView({ updates, isProcessing, hasSession }: ChatViewProps) {
 
   // Group updates into messages
   const messages = groupUpdatesIntoMessages(updates)
+
+  // Show initializing state
+  if (isInitializing) {
+    return <SessionInitializing />
+  }
 
   if (messages.length === 0) {
     return (
@@ -458,5 +464,20 @@ function LoadingDots() {
       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: '150ms' }} />
       <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" style={{ animationDelay: '300ms' }} />
     </span>
+  )
+}
+
+function SessionInitializing() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <div className="flex flex-col items-center gap-6">
+        {/* Shimmer progress bar */}
+        <div className="relative h-1 w-48 overflow-hidden rounded-full bg-muted">
+          <div className="absolute inset-0 h-full w-1/2 rounded-full bg-gradient-to-r from-transparent via-primary/60 to-transparent animate-shimmer" />
+        </div>
+        {/* Text */}
+        <p className="text-sm text-muted-foreground">Initializing agent...</p>
+      </div>
+    </div>
   )
 }
