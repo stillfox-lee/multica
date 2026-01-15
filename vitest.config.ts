@@ -10,13 +10,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/main/**', 'src/shared/**'],
-      exclude: ['src/renderer/**', 'src/preload/**'],
-    },
+      exclude: ['src/renderer/**', 'src/preload/**']
+    }
   },
   resolve: {
     alias: {
       '@main': resolve(__dirname, 'src/main'),
-      '@shared': resolve(__dirname, 'src/shared'),
-    },
-  },
+      '@shared': resolve(__dirname, 'src/shared')
+    }
+  }
 })
