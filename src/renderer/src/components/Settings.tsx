@@ -14,6 +14,20 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { Sun, Moon, Monitor, ChevronRight, ChevronDown, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// Agent icons
+import claudeIcon from '../assets/agents/claude-color.svg'
+import openaiIcon from '../assets/agents/openai.svg'
+import opencodeIcon from '../assets/agents/opencode.png'
+
+const AGENT_ICONS: Record<string, string> = {
+  'claude-code': claudeIcon,
+  'codex': openaiIcon,
+  'opencode': opencodeIcon,
+}
+
+// Icons that need dark mode inversion (monochrome black icons)
+const INVERT_IN_DARK = new Set(['codex'])
+
 interface SettingsProps {
   isOpen: boolean
   onClose: () => void
@@ -301,6 +315,14 @@ function AgentItem({
         <span className="p-0.5 text-muted-foreground">
           {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
         </span>
+
+        {AGENT_ICONS[agentId] && (
+          <img
+            src={AGENT_ICONS[agentId]}
+            alt=""
+            className={cn("h-4 w-4", INVERT_IN_DARK.has(agentId) && "dark:invert")}
+          />
+        )}
 
         <span className="flex-1 font-medium text-sm">{agentName}</span>
 

@@ -2,8 +2,22 @@
  * Agent selector dropdown for MessageInput
  */
 import { useState, useEffect } from 'react'
-import { Sparkles, ChevronDown, Loader2 } from 'lucide-react'
+import { ChevronDown, Loader2 } from 'lucide-react'
 import type { AgentCheckResult } from '../../../shared/electron-api'
+
+// Agent icons
+import claudeIcon from '../assets/agents/claude-color.svg'
+import openaiIcon from '../assets/agents/openai.svg'
+import opencodeIcon from '../assets/agents/opencode.png'
+
+const AGENT_ICONS: Record<string, string> = {
+  'claude-code': claudeIcon,
+  'codex': openaiIcon,
+  'opencode': opencodeIcon,
+}
+
+// Icons that need dark mode inversion (monochrome black icons)
+const INVERT_IN_DARK = new Set(['codex'])
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -67,7 +81,15 @@ export function AgentSelector({
             (disabled || isLoading) && "opacity-50 cursor-not-allowed"
           )}
         >
-          <Sparkles className="h-3.5 w-3.5" />
+          {AGENT_ICONS[currentAgentId] ? (
+            <img
+              src={AGENT_ICONS[currentAgentId]}
+              alt=""
+              className={cn("h-3.5 w-3.5", INVERT_IN_DARK.has(currentAgentId) && "dark:invert")}
+            />
+          ) : (
+            <span className="h-3.5 w-3.5" />
+          )}
           <span className="max-w-[100px] truncate">{currentAgentName}</span>
           {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
@@ -81,6 +103,10 @@ export function AgentSelector({
           const isSelected = agent.id === currentAgentId
           const isDisabled = !agent.installed
 
+          const icon = AGENT_ICONS[agent.id]
+
+          const needsInvert = INVERT_IN_DARK.has(agent.id)
+
           if (isDisabled) {
             return (
               <Tooltip key={agent.id}>
@@ -88,9 +114,12 @@ export function AgentSelector({
                   <div>
                     <DropdownMenuItem
                       disabled
-                      className="flex items-center justify-between"
+                      className="flex items-center justify-between gap-2"
                     >
-                      <span>{agent.name}</span>
+                      <div className="flex items-center gap-2">
+                        {icon && <img src={icon} alt="" className={cn("h-4 w-4", needsInvert && "dark:invert")} />}
+                        <span>{agent.name}</span>
+                      </div>
                       <span className="h-2 w-2 rounded-full bg-muted" />
                     </DropdownMenuItem>
                   </div>
@@ -106,9 +135,12 @@ export function AgentSelector({
             <DropdownMenuItem
               key={agent.id}
               onClick={() => handleSelect(agent.id)}
-              className="flex items-center justify-between"
+              className="flex items-center justify-between gap-2"
             >
-              <span>{agent.name}</span>
+              <div className="flex items-center gap-2">
+                {icon && <img src={icon} alt="" className={cn("h-4 w-4", needsInvert && "dark:invert")} />}
+                <span>{agent.name}</span>
+              </div>
               <span
                 className={cn(
                   "h-2 w-2 rounded-full",
