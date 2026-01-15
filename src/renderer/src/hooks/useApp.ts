@@ -10,6 +10,7 @@ import type { RunningSessionsStatus } from '../../../shared/electron-api'
 import type { MessageContent } from '../../../shared/types/message'
 import { usePermissionStore } from '../stores/permissionStore'
 import { useFileChangeStore } from '../stores/fileChangeStore'
+import { toast } from 'sonner'
 
 export interface AppState {
   // Sessions
@@ -37,6 +38,7 @@ export interface AppActions {
   // Agent actions (per-session)
   sendPrompt: (content: MessageContent) => Promise<void>
   cancelRequest: () => Promise<void>
+  switchSessionAgent: (newAgentId: string) => Promise<void>
 
   // UI actions
   clearError: () => void
@@ -282,6 +284,23 @@ export function useApp(): AppState & AppActions {
     }
   }, [currentSession])
 
+  const switchSessionAgent = useCallback(async (newAgentId: string) => {
+    if (!currentSession) {
+      setError('No active session')
+      return
+    }
+
+    try {
+      setError(null)
+      const updatedSession = await window.electronAPI.switchSessionAgent(currentSession.id, newAgentId)
+      setCurrentSession(updatedSession)
+      await loadRunningStatus()
+      toast.success(`Switched to ${newAgentId}`)
+    } catch (err) {
+      setError(`Failed to switch agent: ${err}`)
+    }
+  }, [currentSession, loadRunningStatus])
+
   const clearError = useCallback(() => {
     setError(null)
   }, [])
@@ -304,6 +323,7 @@ export function useApp(): AppState & AppActions {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
+    switchSessionAgent,
     clearError,
   }
 }
