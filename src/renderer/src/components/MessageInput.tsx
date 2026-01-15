@@ -40,11 +40,6 @@ export function MessageInput({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Get folder name from path
-  const folderName = workingDirectory
-    ? workingDirectory.split('/').filter(Boolean).pop() || workingDirectory
-    : null
-
   // Auto-resize textarea
   useEffect(() => {
     const textarea = textareaRef.current
