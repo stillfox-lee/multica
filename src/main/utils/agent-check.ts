@@ -20,6 +20,12 @@ function getEnhancedPath(): string {
   return `${customPaths.join(':')}:${process.env.PATH || ''}`
 }
 
+export interface CommandInfo {
+  command: string
+  path?: string
+  version?: string
+}
+
 export interface AgentCheckResult {
   id: string
   name: string
@@ -28,6 +34,7 @@ export interface AgentCheckResult {
   path?: string
   version?: string
   installHint?: string
+  commands?: CommandInfo[]
 }
 
 // Install hints for each agent
@@ -36,6 +43,14 @@ const INSTALL_HINTS: Record<string, string> = {
   opencode: 'go install github.com/anomalyco/opencode@latest',
   codex: 'npm install -g @openai/codex',
   gemini: 'npm install -g @google/gemini-cli',
+}
+
+// Commands to check for each agent
+const AGENT_COMMANDS: Record<string, string[]> = {
+  'claude-code': ['claude', 'claude-code-acp'],
+  opencode: ['opencode'],
+  codex: ['codex', 'codex-acp'],
+  gemini: ['gemini'],
 }
 
 /**
@@ -86,6 +101,17 @@ export function checkAgents(): AgentCheckResult[] {
   for (const [id, config] of Object.entries(DEFAULT_AGENTS)) {
     const check = commandExists(config.command)
 
+    // Check all related commands for this agent
+    const commandsToCheck = AGENT_COMMANDS[id] || [config.command]
+    const commands: CommandInfo[] = commandsToCheck.map((cmd) => {
+      const cmdCheck = commandExists(cmd)
+      return {
+        command: cmd,
+        path: cmdCheck.path,
+        version: cmdCheck.version,
+      }
+    })
+
     results.push({
       id,
       name: config.name,
@@ -94,6 +120,7 @@ export function checkAgents(): AgentCheckResult[] {
       path: check.path,
       version: check.version,
       installHint: INSTALL_HINTS[id],
+      commands,
     })
   }
 

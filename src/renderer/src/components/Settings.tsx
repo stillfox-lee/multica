@@ -280,7 +280,19 @@ function AgentItem({
               </p>
             ) : null
           ) : (
-            <p className="text-xs">{getAgentDescription(agent.id)}</p>
+            <div className="space-y-1">
+              <p className="text-xs">{getAgentDescription(agent.id)}</p>
+              {agent.commands && agent.commands.length > 0 && (
+                <div className="mt-2 space-y-0.5">
+                  {agent.commands.map((cmd) => (
+                    <div key={cmd.command} className="text-xs font-mono text-muted-foreground/70">
+                      <span className="text-muted-foreground">{cmd.command}:</span>{' '}
+                      {cmd.path || <span className="italic">not installed</span>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

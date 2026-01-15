@@ -26,6 +26,12 @@ export interface AgentMessage {
   done: boolean
 }
 
+export interface CommandInfo {
+  command: string
+  path?: string
+  version?: string
+}
+
 export interface AgentCheckResult {
   id: string
   name: string
@@ -34,6 +40,7 @@ export interface AgentCheckResult {
   path?: string
   version?: string
   installHint?: string
+  commands?: CommandInfo[]
 }
 
 export interface RunningSessionsStatus {
