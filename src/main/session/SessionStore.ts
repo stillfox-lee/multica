@@ -209,6 +209,9 @@ export class SessionStore {
     if (updates.agentSessionId !== undefined) {
       sessionData.session.agentSessionId = updates.agentSessionId
     }
+    if (updates.agentId !== undefined) {
+      sessionData.session.agentId = updates.agentId
+    }
 
     // Update timestamp
     sessionData.session.updatedAt = new Date().toISOString()
