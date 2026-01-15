@@ -23,6 +23,8 @@ interface ChatViewProps {
 
 export function ChatView({ updates, isProcessing, hasSession, isInitializing, currentSessionId, onSelectFolder }: ChatViewProps) {
   const bottomRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const isNearBottomRef = useRef(true)
   const pendingPermission = usePermissionStore((s) => s.pendingRequests[0] ?? null)
 
   // Only show permission request if it belongs to the current session
@@ -30,9 +32,21 @@ export function ChatView({ updates, isProcessing, hasSession, isInitializing, cu
     ? pendingPermission
     : null
 
-  // Auto-scroll to bottom when new messages arrive or permission request changes
+  // Track scroll position to determine if user is near bottom
+  const handleScroll = () => {
+    const container = scrollContainerRef.current
+    if (!container) return
+    // Consider "near bottom" if within 100px of the bottom
+    const threshold = 100
+    const isNear = container.scrollHeight - container.scrollTop - container.clientHeight < threshold
+    isNearBottomRef.current = isNear
+  }
+
+  // Auto-scroll to bottom only if user is already near bottom
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (isNearBottomRef.current) {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
   }, [updates, currentPermission])
 
   // Group updates into messages
@@ -68,7 +82,7 @@ export function ChatView({ updates, isProcessing, hasSession, isInitializing, cu
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div ref={scrollContainerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl space-y-5 px-8 py-6">
         {messages.map((msg, idx) => (
           <MessageBubble key={idx} message={msg} />
