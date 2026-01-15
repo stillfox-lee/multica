@@ -23,6 +23,7 @@ import type {
   MulticaSession,
   SessionData,
   ListSessionsOptions,
+  AskUserQuestionResponseData,
 } from '../../shared/types'
 import type { MessageContent, MessageContentItem } from '../../shared/types/message'
 import { formatHistoryForReplay, hasReplayableHistory } from './historyReplay'
@@ -71,6 +72,23 @@ export class Conductor {
   // In-memory session for CLI mode (when persistence is skipped)
   private inMemorySession: MulticaSession | null = null
 
+  /**
+   * Pending answers from AskUserQuestion tool (G-3 workaround)
+   *
+   * ACP's AskUserQuestion tool has a limitation: it only returns
+   * "User has answered the question(s)" to the agent, without the actual
+   * user selection. This Map stores the user's answers so they can be
+   * injected into the next prompt as context.
+   *
+   * Flow:
+   * 1. User selects an option in AskUserQuestion UI
+   * 2. Answer is stored here via addPendingAnswer()
+   * 3. Current agent turn is cancelled (G-3 mechanism)
+   * 4. Re-prompt is sent, which injects these answers as context
+   * 5. Agent now sees the actual user selection
+   */
+  private pendingAnswers: Map<string, Array<{ question: string; answer: string }>> = new Map()
+
   constructor(options: ConductorOptions = {}) {
     this.events = options.events ?? {}
     this.skipPersistence = options.skipPersistence ?? false
@@ -98,25 +116,19 @@ export class Conductor {
     cwd: string,
     isResumed: boolean = false
   ): Promise<{ connection: ClientSideConnection; agentSessionId: string }> {
-    const startTime = Date.now()
     console.log(`[Conductor] Starting agent for session ${sessionId}: ${config.name}`)
 
     // Start the agent subprocess
     const agentProcess = new AgentProcess(config)
-    const t1 = Date.now()
     await agentProcess.start()
-    console.log(`[Conductor] [TIMING] AgentProcess.start() took ${Date.now() - t1}ms`)
 
     // Create ACP connection using the SDK
-    const t2 = Date.now()
     const stream = ndJsonStream(
       agentProcess.getStdinWeb(),
       agentProcess.getStdoutWeb()
     )
-    console.log(`[Conductor] [TIMING] ndJsonStream() took ${Date.now() - t2}ms`)
 
     // Create client-side connection with our Client implementation
-    const t3 = Date.now()
     const connection = new ClientSideConnection(
       (_agent) =>
         createAcpClient(sessionId, {
@@ -128,12 +140,8 @@ export class Conductor {
         }),
       stream
     )
-    console.log(`[Conductor] [TIMING] ClientSideConnection() took ${Date.now() - t3}ms`)
-
-    console.log(`[Conductor] Sending ACP initialize request (protocol v${PROTOCOL_VERSION})`)
 
     // Initialize the ACP connection
-    const t4 = Date.now()
     const initResult = await connection.initialize({
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {
@@ -144,20 +152,14 @@ export class Conductor {
         terminal: false,
       },
     })
-    console.log(`[Conductor] [TIMING] connection.initialize() took ${Date.now() - t4}ms`)
 
-    console.log(`[Conductor] ACP connected to ${config.name}`)
-    console.log(`[Conductor]   Protocol version: ${initResult.protocolVersion}`)
-    console.log(`[Conductor]   Agent info:`, initResult.agentInfo)
+    console.log(`[Conductor] ACP connected to ${config.name} (protocol v${initResult.protocolVersion})`)
 
     // Create ACP session
-    const t5 = Date.now()
     const acpResult = await connection.newSession({
       cwd,
       mcpServers: [],
     })
-    console.log(`[Conductor] [TIMING] connection.newSession() took ${Date.now() - t5}ms`)
-    console.log(`[Conductor] [TIMING] Total startAgentForSession() took ${Date.now() - startTime}ms`)
 
     // Handle agent process exit
     agentProcess.onExit((code, signal) => {
@@ -292,8 +294,17 @@ export class Conductor {
 
   /**
    * Send a prompt to the agent (supports text and images)
+   * @param sessionId - Multica session ID
+   * @param content - Message content (text, images)
+   * @param options - Optional settings
+   * @param options.internal - If true, message is sent to agent but not displayed in UI
+   *                          Used by G-3 mechanism to send user answers without creating visible messages
    */
-  async sendPrompt(sessionId: string, content: MessageContent): Promise<string> {
+  async sendPrompt(
+    sessionId: string,
+    content: MessageContent,
+    options?: { internal?: boolean }
+  ): Promise<string> {
     // Ensure agent is running (lazy start if needed)
     const sessionAgent = await this.ensureAgentForSession(sessionId)
     const { connection, agentSessionId } = sessionAgent
@@ -334,6 +345,26 @@ export class Conductor {
       }
     }
 
+    // Inject pending user answers from AskUserQuestion (G-3 workaround)
+    // See pendingAnswers field comment for the full explanation
+    const pendingAnswers = this.getPendingAnswers(sessionId)
+    if (pendingAnswers.length > 0) {
+      const answerContext = pendingAnswers.map(a =>
+        `[User's answer to "${a.question}"]: ${a.answer}`
+      ).join('\n')
+
+      console.log(`[Conductor] Injecting ${pendingAnswers.length} pending answer(s) for session ${sessionId}`)
+
+      // Prepend answers as context before user's message
+      promptContent = [
+        { type: 'text', text: `---\n${answerContext}\n---\n` },
+        ...promptContent
+      ]
+
+      // Clear pending answers after injection
+      this.clearPendingAnswers(sessionId)
+    }
+
     // Log prompt info
     const textContent = content.find((c: MessageContentItem) => c.type === 'text')
     const imageCount = content.filter((c: MessageContentItem) => c.type === 'image').length
@@ -346,12 +377,14 @@ export class Conductor {
     }
 
     // Store user message before sending (so it appears in history)
+    // Internal messages are stored with _internal flag for filtering in UI
     if (this.sessionStore) {
       const userUpdate = {
         sessionId: agentSessionId,
         update: {
           sessionUpdate: 'user_message',
           content: content, // Store full MessageContent array
+          _internal: options?.internal ?? false, // G-3: internal messages not shown in UI
         },
       }
       await this.sessionStore.appendUpdate(sessionId, userUpdate as any)
@@ -535,5 +568,86 @@ export class Conductor {
    */
   getProcessingSessionIds(): string[] {
     return Array.from(this.processingSessions)
+  }
+
+  /**
+   * Check if a session is currently processing a request
+   * Used by G-3 handler to wait for cancel to complete before re-prompting
+   */
+  isSessionProcessing(sessionId: string): boolean {
+    return this.processingSessions.has(sessionId)
+  }
+
+  /**
+   * Get Multica session ID from ACP session ID
+   */
+  getMulticaSessionIdByAcp(acpSessionId: string): string | null {
+    for (const [multicaId, agent] of this.sessions.entries()) {
+      if (agent.agentSessionId === acpSessionId) {
+        return multicaId
+      }
+    }
+    return null
+  }
+
+  /**
+   * Store a user's answer from AskUserQuestion for later injection (G-3 workaround)
+   * The answer will be prepended to the next prompt as context
+   */
+  addPendingAnswer(sessionId: string, question: string, answer: string): void {
+    if (!this.pendingAnswers.has(sessionId)) {
+      this.pendingAnswers.set(sessionId, [])
+    }
+    this.pendingAnswers.get(sessionId)!.push({ question, answer })
+  }
+
+  /**
+   * Get pending answers for a session (internal use)
+   */
+  private getPendingAnswers(sessionId: string): Array<{ question: string; answer: string }> {
+    return this.pendingAnswers.get(sessionId) || []
+  }
+
+  /**
+   * Clear pending answers for a session (internal use)
+   */
+  private clearPendingAnswers(sessionId: string): void {
+    this.pendingAnswers.delete(sessionId)
+  }
+
+  /**
+   * Store AskUserQuestion response for persistence
+   * This allows the completed state to be restored after app restart.
+   * The response is stored as a session update with type 'askuserquestion_response'.
+   */
+  async storeAskUserQuestionResponse(
+    sessionId: string,
+    toolCallId: string,
+    response: AskUserQuestionResponseData
+  ): Promise<void> {
+    if (!this.sessionStore) {
+      console.log('[Conductor] Skipping AskUserQuestion response storage (no session store)')
+      return
+    }
+
+    const update = {
+      sessionId,
+      update: {
+        sessionUpdate: 'askuserquestion_response',
+        toolCallId,
+        response,
+      },
+    }
+
+    console.log(`[Conductor] Storing AskUserQuestion response for toolCallId=${toolCallId}`)
+    await this.sessionStore.appendUpdate(sessionId, update as any)
+
+    // Also notify frontend so it appears in sessionUpdates immediately
+    if (this.events.onSessionUpdate) {
+      this.events.onSessionUpdate({
+        sessionId,
+        update: update.update,
+      } as SessionNotification)
+    }
   }
 }
