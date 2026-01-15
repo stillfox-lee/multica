@@ -18,6 +18,7 @@ interface MessageInputProps {
   onSelectFolder: () => Promise<void>
   currentAgentId?: string
   onAgentChange?: (agentId: string) => void
+  isSwitchingAgent?: boolean
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -33,6 +34,7 @@ export function MessageInput({
   onSelectFolder,
   currentAgentId,
   onAgentChange,
+  isSwitchingAgent = false,
 }: MessageInputProps) {
   const [value, setValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -172,7 +174,7 @@ export function MessageInput({
     return (
       <div className="p-4">
         <div className="mx-auto max-w-3xl">
-          <div className="bg-secondary/50 hover:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
+          <div className="bg-[#fdfdfc] hover:bg-[#fdfdfc] transition-colors duration-200 rounded-xl p-3 border border-border">
             {/* Folder selection prompt */}
             <div className="flex items-center gap-3">
               <Folder className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -203,7 +205,7 @@ export function MessageInput({
   return (
     <div className="p-4">
       <div className="mx-auto max-w-3xl">
-        <div className="bg-secondary/50 hover:bg-secondary focus-within:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
+        <div className="bg-[#fdfdfc] hover:bg-[#fdfdfc] focus-within:bg-[#fdfdfc] transition-colors duration-200 rounded-xl p-3 border border-border">
           {/* Image previews */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border/50">
@@ -263,6 +265,7 @@ export function MessageInput({
                   currentAgentId={currentAgentId}
                   onAgentChange={onAgentChange}
                   disabled={isProcessing}
+                  isSwitching={isSwitchingAgent}
                 />
               )}
 

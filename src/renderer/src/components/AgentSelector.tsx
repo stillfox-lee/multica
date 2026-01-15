@@ -17,12 +17,14 @@ interface AgentSelectorProps {
   currentAgentId: string
   onAgentChange: (agentId: string) => void
   disabled?: boolean
+  isSwitching?: boolean
 }
 
 export function AgentSelector({
   currentAgentId,
   onAgentChange,
   disabled = false,
+  isSwitching = false,
 }: AgentSelectorProps) {
   const [agents, setAgents] = useState<AgentCheckResult[]>([])
   const [loading, setLoading] = useState(true)
@@ -54,18 +56,20 @@ export function AgentSelector({
     setOpen(false)
   }
 
+  const isLoading = loading || isSwitching
+
   return (
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild disabled={disabled || loading}>
+      <DropdownMenuTrigger asChild disabled={disabled || isLoading}>
         <button
           className={cn(
             "flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 rounded-md hover:bg-background/50",
-            disabled && "opacity-50 cursor-not-allowed"
+            (disabled || isLoading) && "opacity-50 cursor-not-allowed"
           )}
         >
           <Sparkles className="h-3.5 w-3.5" />
           <span className="max-w-[100px] truncate">{currentAgentName}</span>
-          {loading ? (
+          {isLoading ? (
             <Loader2 className="h-3 w-3 animate-spin" />
           ) : (
             <ChevronDown className="h-3 w-3" />

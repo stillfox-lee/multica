@@ -27,6 +27,7 @@ function AppContent(): React.JSX.Element {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    isSwitchingAgent,
     error,
 
     // Actions
@@ -143,6 +144,7 @@ function AppContent(): React.JSX.Element {
             onSelectFolder={handleSelectFolder}
             currentAgentId={currentSession?.agentId}
             onAgentChange={switchSessionAgent}
+            isSwitchingAgent={isSwitchingAgent}
           />
         </main>
 

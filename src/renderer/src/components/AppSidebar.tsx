@@ -99,9 +99,9 @@ function SessionItem({ session, isActive, isProcessing, needsPermission, onSelec
                 ) : null}
               </div>
 
-              {/* Line 2: Agent + Timestamp */}
+              {/* Line 2: Timestamp */}
               <span className="text-xs text-muted-foreground/60">
-                {session.agentId} · {formatDate(session.updatedAt)}
+                {formatDate(session.updatedAt)}
               </span>
             </div>
 

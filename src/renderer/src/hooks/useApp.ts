@@ -25,6 +25,7 @@ export interface AppState {
 
   // UI
   error: string | null
+  isSwitchingAgent: boolean
 }
 
 export interface AppActions {
@@ -56,6 +57,7 @@ export function useApp(): AppState & AppActions {
   })
   const [error, setError] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
+  const [isSwitchingAgent, setIsSwitchingAgent] = useState(false)
 
   // Derive isProcessing from processingSessionIds (per-session isolation)
   const isProcessing = currentSession
@@ -292,12 +294,15 @@ export function useApp(): AppState & AppActions {
 
     try {
       setError(null)
+      setIsSwitchingAgent(true)
       const updatedSession = await window.electronAPI.switchSessionAgent(currentSession.id, newAgentId)
       setCurrentSession(updatedSession)
       await loadRunningStatus()
       toast.success(`Switched to ${newAgentId}`)
     } catch (err) {
       setError(`Failed to switch agent: ${err}`)
+    } finally {
+      setIsSwitchingAgent(false)
     }
   }, [currentSession, loadRunningStatus])
 
@@ -313,6 +318,7 @@ export function useApp(): AppState & AppActions {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    isSwitchingAgent,
     error,
 
     // Actions
