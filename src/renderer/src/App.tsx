@@ -28,7 +28,6 @@ function AppContent(): React.JSX.Element {
     isProcessing,
     isInitializing,
     isSwitchingAgent,
-    error,
 
     // Actions
     createSession,
@@ -38,7 +37,6 @@ function AppContent(): React.JSX.Element {
     sendPrompt,
     cancelRequest,
     switchSessionAgent,
-    clearError,
   } = useApp()
 
   // UI state
@@ -90,16 +88,6 @@ function AppContent(): React.JSX.Element {
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
-      {/* Error banner */}
-      {error && (
-        <div className="flex items-center justify-between bg-red-600 px-4 py-2 text-sm text-white">
-          <span>{error}</span>
-          <button onClick={clearError} className="hover:underline">
-            Dismiss
-          </button>
-        </div>
-      )}
-
       {/* Main content */}
       <SidebarProvider
         open={sidebarOpen}
@@ -175,7 +163,7 @@ function AppContent(): React.JSX.Element {
       />
 
       {/* Toast notifications */}
-      <Toaster position="bottom-right" />
+      <Toaster position="top-center" />
     </div>
   )
 }
