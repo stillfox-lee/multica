@@ -1,11 +1,15 @@
 /**
  * Conductor - Central orchestrator for ACP agent communication
+ *
+ * Responsibilities:
+ * - Session lifecycle management (create, resume, load, delete)
+ * - Agent process orchestration
+ * - Prompt handling with history replay
  */
 import {
   ClientSideConnection,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Client,
   type SessionNotification,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
@@ -13,6 +17,7 @@ import {
 import { AgentProcess } from './AgentProcess'
 import { SessionStore } from '../session/SessionStore'
 import { DEFAULT_AGENTS } from '../config/defaults'
+import { createAcpClient } from './AcpClientFactory'
 import type {
   AgentConfig,
   MulticaSession,
@@ -106,7 +111,14 @@ export class Conductor {
 
     // Create client-side connection with our Client implementation
     const connection = new ClientSideConnection(
-      (_agent) => this.createClient(sessionId),
+      (_agent) =>
+        createAcpClient(sessionId, {
+          sessionStore: this.sessionStore,
+          callbacks: {
+            onSessionUpdate: this.events.onSessionUpdate,
+            onPermissionRequest: this.events.onPermissionRequest,
+          },
+        }),
       stream
     )
 
@@ -490,64 +502,5 @@ export class Conductor {
    */
   getProcessingSessionIds(): string[] {
     return Array.from(this.processingSessions)
-  }
-
-  /**
-   * Create the Client implementation for ACP SDK
-   */
-  private createClient(sessionId: string): Client {
-    return {
-      // Handle session updates from agent
-      sessionUpdate: async (params: SessionNotification) => {
-        // Log the update type
-        const update = params.update
-        if ('sessionUpdate' in update) {
-          const updateType = update.sessionUpdate
-          if (updateType === 'agent_message_chunk') {
-            const contentType = update.content?.type || 'unknown'
-            console.log(`[ACP] Session ${sessionId} update: ${updateType} (${contentType})`)
-          } else if (updateType === 'tool_call') {
-            console.log(`[ACP] Session ${sessionId} update: ${updateType} - ${update.title} [${update.status}]`)
-          } else if (updateType === 'tool_call_update') {
-            console.log(`[ACP] Session ${sessionId} update: ${updateType} [${update.status}]`)
-          } else {
-            console.log(`[ACP] Session ${sessionId} update: ${updateType}`, update)
-          }
-        } else {
-          console.log(`[ACP] Session ${sessionId} update (raw):`, params)
-        }
-
-        // Store raw update to SessionStore (if available)
-        if (this.sessionStore) {
-          try {
-            await this.sessionStore.appendUpdate(sessionId, params)
-          } catch (err) {
-            console.error('[Conductor] Failed to store session update:', err)
-          }
-        }
-
-        // Trigger UI callback
-        if (this.events.onSessionUpdate) {
-          this.events.onSessionUpdate(params)
-        }
-      },
-
-      // Handle permission requests from agent
-      requestPermission: async (
-        params: RequestPermissionRequest
-      ): Promise<RequestPermissionResponse> => {
-        if (this.events.onPermissionRequest) {
-          return this.events.onPermissionRequest(params)
-        }
-        // Default: auto-approve (V1 simplification)
-        console.log(`[Conductor] Auto-approving: ${params.toolCall.title}`)
-        return {
-          outcome: {
-            outcome: 'selected',
-            optionId: params.options[0]?.optionId ?? '',
-          },
-        }
-      },
-    }
   }
 }
