@@ -43,13 +43,15 @@ export class PermissionManager {
     )
 
     const mainWindow = this.getMainWindow()
+    // Get the multica session ID (internal) from ACP session ID
+    const multicaSessionId = this.conductor.getMulticaSessionIdByAcp(params.sessionId)
 
     // Send permission request to renderer
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(IPC_CHANNELS.PERMISSION_REQUEST, {
         requestId,
         sessionId: params.sessionId,
-        multicaSessionId: params.sessionId, // ACP session ID
+        multicaSessionId: multicaSessionId || params.sessionId, // Use multica session ID for filtering
         toolCall: {
           toolCallId: params.toolCall.toolCallId,
           title: params.toolCall.title,
