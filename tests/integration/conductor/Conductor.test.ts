@@ -203,7 +203,7 @@ describe('Conductor', () => {
       const session = await conductor.createSession('/test/project', mockAgentConfig)
 
       // sendPrompt should trigger status changes
-      await conductor.sendPrompt(session.id, 'Hello')
+      await conductor.sendPrompt(session.id, [{ type: 'text', text: 'Hello' }])
 
       // Should be called at least twice (start processing, end processing)
       expect(onStatusChange).toHaveBeenCalled()

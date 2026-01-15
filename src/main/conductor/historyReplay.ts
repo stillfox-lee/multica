@@ -3,9 +3,34 @@
  * Formats conversation history for prepending to prompts when agent restarts
  */
 import type { StoredSessionUpdate } from '../../shared/types'
+import type { MessageContent } from '../../shared/types/message'
 
 // Token estimation: ~4 bytes per token (same heuristic as Codex)
 const APPROX_BYTES_PER_TOKEN = 4
+
+/**
+ * Extract text from user message content
+ * Supports both new format (MessageContent[]) and old format ({ text: string })
+ */
+function extractUserMessageText(content: unknown): string {
+  if (!content) return ''
+
+  // New format: MessageContent[] (array of content items)
+  if (Array.isArray(content)) {
+    const textItem = (content as MessageContent).find((item) => item.type === 'text')
+    return textItem?.type === 'text' ? textItem.text : ''
+  }
+
+  // Old format: { type: 'text', text: string } or { text: string }
+  if (typeof content === 'object') {
+    const obj = content as { text?: string }
+    if (typeof obj.text === 'string') {
+      return obj.text
+    }
+  }
+
+  return ''
+}
 
 // Default max tokens for history (leaves room for user prompt and response)
 const DEFAULT_MAX_HISTORY_TOKENS = 20000
@@ -58,7 +83,8 @@ function extractMessages(updates: StoredSessionUpdate[]): ExtractedMessage[] {
       }
 
       // Add user message (custom internal type)
-      const content = (inner as { content?: { text?: string } }).content?.text || ''
+      const rawContent = (inner as { content?: unknown }).content
+      const content = extractUserMessageText(rawContent)
       if (content) {
         messages.push({ role: 'user', content })
       }
@@ -207,7 +233,8 @@ export function hasReplayableHistory(updates: StoredSessionUpdate[]): boolean {
     const updateType = inner.sessionUpdate as string
 
     if (updateType === 'user_message') {
-      const content = (inner as { content?: { text?: string } }).content?.text
+      const rawContent = (inner as { content?: unknown }).content
+      const content = extractUserMessageText(rawContent)
       if (content) {
         hasUser = true
       }
