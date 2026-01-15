@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { ArrowUp, Square, Folder, Paperclip, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { AgentSelector } from './AgentSelector'
 import type { MessageContent, ImageContentItem } from '../../../shared/types/message'
 
 interface MessageInputProps {
@@ -15,6 +16,9 @@ interface MessageInputProps {
   placeholder?: string
   workingDirectory?: string | null
   onSelectFolder: () => Promise<void>
+  currentAgentId?: string
+  onAgentChange?: (agentId: string) => void
+  isSwitchingAgent?: boolean
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -28,6 +32,9 @@ export function MessageInput({
   placeholder = 'Type a message...',
   workingDirectory,
   onSelectFolder,
+  currentAgentId,
+  onAgentChange,
+  isSwitchingAgent = false,
 }: MessageInputProps) {
   const [value, setValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -172,7 +179,7 @@ export function MessageInput({
     return (
       <div className="p-4">
         <div className="mx-auto max-w-3xl">
-          <div className="bg-secondary/50 hover:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
+          <div className="bg-[#fdfdfc] hover:bg-[#fdfdfc] transition-colors duration-200 rounded-xl p-3 border border-border">
             {/* Folder selection prompt */}
             <div className="flex items-center gap-3">
               <Folder className="h-5 w-5 text-muted-foreground flex-shrink-0" />
@@ -203,7 +210,7 @@ export function MessageInput({
   return (
     <div className="p-4">
       <div className="mx-auto max-w-3xl">
-        <div className="bg-secondary/50 hover:bg-secondary focus-within:bg-secondary transition-colors duration-200 rounded-xl p-3 border border-border">
+        <div className="bg-[#fdfdfc] hover:bg-[#fdfdfc] focus-within:bg-[#fdfdfc] transition-colors duration-200 rounded-xl p-3 border border-border">
           {/* Image previews */}
           {images.length > 0 && (
             <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-border/50">
@@ -255,8 +262,18 @@ export function MessageInput({
 
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between pt-2">
-            {/* Left side: folder and image button */}
+            {/* Left side: agent selector, folder, and image button */}
             <div className="flex items-center gap-1">
+              {/* Agent selector */}
+              {currentAgentId && onAgentChange && (
+                <AgentSelector
+                  currentAgentId={currentAgentId}
+                  onAgentChange={onAgentChange}
+                  disabled={isProcessing}
+                  isSwitching={isSwitchingAgent}
+                />
+              )}
+
               {/* Folder indicator */}
               <Tooltip>
                 <TooltipTrigger asChild>

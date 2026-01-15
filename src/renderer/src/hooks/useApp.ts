@@ -10,6 +10,7 @@ import type { RunningSessionsStatus } from '../../../shared/electron-api'
 import type { MessageContent } from '../../../shared/types/message'
 import { usePermissionStore } from '../stores/permissionStore'
 import { useFileChangeStore } from '../stores/fileChangeStore'
+import { toast } from 'sonner'
 
 export interface AppState {
   // Sessions
@@ -24,6 +25,7 @@ export interface AppState {
 
   // UI
   error: string | null
+  isSwitchingAgent: boolean
 }
 
 export interface AppActions {
@@ -37,6 +39,7 @@ export interface AppActions {
   // Agent actions (per-session)
   sendPrompt: (content: MessageContent) => Promise<void>
   cancelRequest: () => Promise<void>
+  switchSessionAgent: (newAgentId: string) => Promise<void>
 
   // UI actions
   clearError: () => void
@@ -54,6 +57,7 @@ export function useApp(): AppState & AppActions {
   })
   const [error, setError] = useState<string | null>(null)
   const [isInitializing, setIsInitializing] = useState(false)
+  const [isSwitchingAgent, setIsSwitchingAgent] = useState(false)
 
   // Derive isProcessing from processingSessionIds (per-session isolation)
   const isProcessing = currentSession
@@ -282,6 +286,26 @@ export function useApp(): AppState & AppActions {
     }
   }, [currentSession])
 
+  const switchSessionAgent = useCallback(async (newAgentId: string) => {
+    if (!currentSession) {
+      setError('No active session')
+      return
+    }
+
+    try {
+      setError(null)
+      setIsSwitchingAgent(true)
+      const updatedSession = await window.electronAPI.switchSessionAgent(currentSession.id, newAgentId)
+      setCurrentSession(updatedSession)
+      await loadRunningStatus()
+      toast.success(`Switched to ${newAgentId}`)
+    } catch (err) {
+      setError(`Failed to switch agent: ${err}`)
+    } finally {
+      setIsSwitchingAgent(false)
+    }
+  }, [currentSession, loadRunningStatus])
+
   const clearError = useCallback(() => {
     setError(null)
   }, [])
@@ -294,6 +318,7 @@ export function useApp(): AppState & AppActions {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    isSwitchingAgent,
     error,
 
     // Actions
@@ -304,6 +329,7 @@ export function useApp(): AppState & AppActions {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
+    switchSessionAgent,
     clearError,
   }
 }

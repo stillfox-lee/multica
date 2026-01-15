@@ -27,6 +27,7 @@ function AppContent(): React.JSX.Element {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    isSwitchingAgent,
     error,
 
     // Actions
@@ -36,6 +37,7 @@ function AppContent(): React.JSX.Element {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
+    switchSessionAgent,
     clearError,
   } = useApp()
 
@@ -140,6 +142,9 @@ function AppContent(): React.JSX.Element {
             disabled={!currentSession}
             workingDirectory={currentSession?.workingDirectory}
             onSelectFolder={handleSelectFolder}
+            currentAgentId={currentSession?.agentId}
+            onAgentChange={switchSessionAgent}
+            isSwitchingAgent={isSwitchingAgent}
           />
         </main>
 
