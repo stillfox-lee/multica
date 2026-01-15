@@ -6,16 +6,14 @@ import { registerIPCHandlers } from './ipc/handlers'
 import { Conductor } from './conductor/Conductor'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { PermissionResponse } from '../shared/electron-api'
+import { PermissionManager } from './permission'
 
-// Global conductor instance
+// Global instances
 let conductor: Conductor
 let mainWindow: BrowserWindow | null = null
-
-// Pending permission requests (requestId -> resolve function)
-const pendingPermissionRequests = new Map<string, (response: PermissionResponse) => void>()
+let permissionManager: PermissionManager
 
 function createWindow(): BrowserWindow {
-  // Create the browser window.
   const window = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -43,8 +41,7 @@ function createWindow(): BrowserWindow {
     return { action: 'deny' }
   })
 
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
+  // HMR for renderer base on electron-vite cli
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
     window.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
@@ -54,15 +51,12 @@ function createWindow(): BrowserWindow {
   return window
 }
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+// This method will be called when Electron has finished initialization
 app.whenReady().then(async () => {
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.multica')
 
   // Default open or close DevTools by F12 in development
-  // and ignore CommandOrControl + R in production.
   app.on('browser-window-created', (_, window) => {
     optimizer.watchWindowShortcuts(window)
   })
@@ -71,19 +65,20 @@ app.whenReady().then(async () => {
   conductor = new Conductor({
     events: {
       onSessionUpdate: (params) => {
-        // Forward ALL session updates to renderer (not just agent_message_chunk)
+        // Forward ALL session updates to renderer
         if (mainWindow && !mainWindow.isDestroyed()) {
-          // Log for debugging
-          const updateType = params.update && 'sessionUpdate' in params.update ? params.update.sessionUpdate : 'unknown'
-          console.log(`[Main->Renderer] Sending update: ${updateType}, ACP sessionId: ${params.sessionId}`)
-
-          // Send the full SessionNotification so renderer can handle all update types
           mainWindow.webContents.send(IPC_CHANNELS.AGENT_MESSAGE, {
             sessionId: params.sessionId,
-            update: params.update,  // Full update object
+            update: params.update,
             done: false,
           })
         }
+
+        // Delegate question tool workaround to PermissionManager
+        permissionManager.handleSessionUpdate({
+          sessionId: params.sessionId,
+          update: params.update as Parameters<typeof permissionManager.handleSessionUpdate>[0]['update'],
+        })
       },
       onStatusChange: () => {
         // Broadcast status change to renderer (for isProcessing state)
@@ -97,87 +92,25 @@ app.whenReady().then(async () => {
         }
       },
       onSessionMetaUpdated: (session) => {
-        // Notify renderer when session metadata changes (e.g., agentSessionId after lazy start)
-        // This is critical for the renderer to receive messages after app restart
+        // Notify renderer when session metadata changes
         if (mainWindow && !mainWindow.isDestroyed()) {
-          console.log(`[Main->Renderer] Session meta updated: ${session.id}, agentSessionId: ${session.agentSessionId}`)
           mainWindow.webContents.send(IPC_CHANNELS.SESSION_META_UPDATED, session)
         }
       },
       onPermissionRequest: async (params) => {
-        // Generate unique request ID
-        const { randomUUID } = await import('crypto')
-        const requestId = randomUUID()
-
-        // Find Multica session ID from ACP session ID
-        const multicaSessionId = conductor.getSessionIdByAgentSessionId(params.sessionId)
-
-        console.log(`[Permission] Request ${requestId}: ${params.toolCall.title}`)
-        console.log(`[Permission]   ACP sessionId: ${params.sessionId}, Multica sessionId: ${multicaSessionId}`)
-        console.log(`[Permission]   Options:`, params.options.map(o => `${o.name} (${o.optionId})`).join(', '))
-
-        // Send permission request to renderer
-        if (mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(IPC_CHANNELS.PERMISSION_REQUEST, {
-            requestId,
-            sessionId: params.sessionId,
-            multicaSessionId: multicaSessionId || params.sessionId, // Use Multica session ID for matching
-            toolCall: {
-              toolCallId: params.toolCall.toolCallId,
-              title: params.toolCall.title,
-              kind: params.toolCall.kind,
-              status: params.toolCall.status,
-              rawInput: params.toolCall.rawInput,
-            },
-            options: params.options.map(o => ({
-              optionId: o.optionId,
-              name: o.name,
-              kind: o.kind,
-            })),
-          })
-        }
-
-        // Wait for response from renderer
-        return new Promise((resolve) => {
-          pendingPermissionRequests.set(requestId, (response) => {
-            console.log(`[Permission] Response ${requestId}: ${response.optionId}`)
-            resolve({
-              outcome: {
-                outcome: 'selected',
-                optionId: response.optionId,
-              },
-            })
-          })
-
-          // Timeout after 5 minutes (auto-deny)
-          setTimeout(() => {
-            if (pendingPermissionRequests.has(requestId)) {
-              console.log(`[Permission] Timeout ${requestId}, auto-denying`)
-              pendingPermissionRequests.delete(requestId)
-              // Find a deny option or use first option
-              const denyOption = params.options.find(o => (o.kind as string) === 'deny') || params.options[0]
-              resolve({
-                outcome: {
-                  outcome: 'selected',
-                  optionId: denyOption?.optionId ?? '',
-                },
-              })
-            }
-          }, 5 * 60 * 1000)
-        })
+        return permissionManager.handlePermissionRequest(params)
       },
     },
   })
+
+  // Initialize PermissionManager after Conductor is created
+  permissionManager = new PermissionManager(conductor, () => mainWindow)
+
   await conductor.initialize()
 
   // Handle permission responses from renderer
   ipcMain.on(IPC_CHANNELS.PERMISSION_RESPONSE, (_event, response: PermissionResponse) => {
-    console.log(`[Permission] Received response for ${response.requestId}: ${response.optionId}`)
-    const resolver = pendingPermissionRequests.get(response.requestId)
-    if (resolver) {
-      pendingPermissionRequests.delete(response.requestId)
-      resolver(response)
-    }
+    permissionManager.handlePermissionResponse(response)
   })
 
   // Register IPC handlers
@@ -186,20 +119,14 @@ app.whenReady().then(async () => {
   mainWindow = createWindow()
 
   app.on('activate', function () {
-    // On macOS it's common to re-create a window in the app when the
-    // dock icon is clicked and there are no other windows open.
+    // On macOS it's common to re-create a window when dock icon is clicked
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
+// Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.

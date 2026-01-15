@@ -1,20 +1,23 @@
 /**
- * Permission request item - displays in chat feed when agent needs authorization
+ * Standard permission request UI - default allow/deny interface
  */
-import { usePermissionStore } from '../stores/permissionStore'
+import { usePermissionStore } from '../../stores/permissionStore'
 import { Button } from '@/components/ui/button'
-import type { PermissionRequest } from '../../../shared/electron-api'
+import type { StandardPermissionUIProps } from './types'
 
-interface PermissionRequestItemProps {
-  request: PermissionRequest
-}
-
-export function PermissionRequestItem({ request }: PermissionRequestItemProps) {
-  const pendingRequest = usePermissionStore((s) => s.pendingRequest)
+export function StandardPermissionUI({ request, isPending }: StandardPermissionUIProps) {
   const respondToRequest = usePermissionStore((s) => s.respondToRequest)
-
   const { toolCall, options } = request
-  const isPending = pendingRequest?.requestId === request.requestId
+
+  // Find allow/deny options
+  const allowOption =
+    options.find((o) => o.kind === 'allow_once') ||
+    options.find((o) => o.kind === 'allow') ||
+    options[0]
+  const denyOption =
+    options.find((o) => o.kind === 'deny') ||
+    options.find((o) => o.kind === 'reject_once') ||
+    options[options.length - 1]
 
   // Format raw input for display
   const formatInput = (input: unknown): string => {
@@ -28,10 +31,6 @@ export function PermissionRequestItem({ request }: PermissionRequestItemProps) {
   }
 
   const inputDisplay = formatInput(toolCall.rawInput)
-
-  // Find allow/deny options
-  const allowOption = options.find((o) => o.kind === 'allow') || options[0]
-  const denyOption = options.find((o) => o.kind === 'deny') || options[options.length - 1]
 
   return (
     <div className="rounded-lg border border-border bg-muted/30 p-3 space-y-3">
@@ -67,7 +66,13 @@ export function PermissionRequestItem({ request }: PermissionRequestItemProps) {
               <Button
                 key={option.optionId}
                 size="sm"
-                variant={option.kind === 'allow' ? 'default' : option.kind === 'deny' ? 'destructive' : 'outline'}
+                variant={
+                  option.kind === 'allow'
+                    ? 'default'
+                    : option.kind === 'deny'
+                      ? 'destructive'
+                      : 'outline'
+                }
                 onClick={() => respondToRequest(option.optionId)}
               >
                 {option.name}
@@ -76,26 +81,17 @@ export function PermissionRequestItem({ request }: PermissionRequestItemProps) {
           ) : (
             // Simple allow/deny
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => respondToRequest(denyOption.optionId)}
-              >
+              <Button size="sm" variant="outline" onClick={() => respondToRequest(denyOption.optionId)}>
                 {denyOption.name || 'Deny'}
               </Button>
-              <Button
-                size="sm"
-                onClick={() => respondToRequest(allowOption.optionId)}
-              >
+              <Button size="sm" onClick={() => respondToRequest(allowOption.optionId)}>
                 {allowOption.name || 'Allow'}
               </Button>
             </>
           )}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground">
-          Responded
-        </div>
+        <div className="text-xs text-muted-foreground">Responded</div>
       )}
     </div>
   )

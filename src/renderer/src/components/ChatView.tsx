@@ -6,10 +6,11 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import type { StoredSessionUpdate } from '../../../shared/types'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
-import { ChevronDown, Folder } from 'lucide-react'
-import { ToolCallItem, type ToolCall } from './ToolCallItem'
-import { PermissionRequestItem } from './PermissionRequestItem'
+import { ChevronDown, CheckCircle2, Circle, Loader2, Folder } from 'lucide-react'
+import { ToolCallItem, type ToolCall, type AnsweredResponse } from './ToolCallItem'
+import { PermissionRequestItem } from './permission'
 import { usePermissionStore } from '../stores/permissionStore'
+import { cn } from '@/lib/utils'
 
 interface ChatViewProps {
   updates: StoredSessionUpdate[]
@@ -74,6 +75,7 @@ export function ChatView({ updates, isProcessing, hasSession, isInitializing, cu
         ))}
 
         {/* Permission request - show in feed (only for current session) */}
+        {/* Completed state is shown inline with the tool call, like other tools */}
         {currentPermission && (
           <PermissionRequestItem request={currentPermission} />
         )}
@@ -113,7 +115,19 @@ interface ToolCallBlock {
   toolCall: ToolCall
 }
 
-type ContentBlock = TextBlock | ImageBlock | ThoughtBlock | ToolCallBlock
+// Plan entry from ACP protocol (TodoWrite tool)
+interface PlanEntry {
+  content: string
+  status: 'pending' | 'in_progress' | 'completed'
+  priority?: 'high' | 'medium' | 'low'
+}
+
+interface PlanBlock {
+  type: 'plan'
+  entries: PlanEntry[]
+}
+
+type ContentBlock = TextBlock | ImageBlock | ThoughtBlock | ToolCallBlock | PlanBlock
 
 interface Message {
   role: 'user' | 'assistant'
@@ -168,11 +182,17 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
 
     switch (update.sessionUpdate) {
       case 'user_message' as string:
-        // Flush any pending assistant message
-        flushAssistantMessage()
-        // Add user message - supports multiple formats for backward compatibility
+        // Skip internal messages (used by G-3 mechanism for AskUserQuestion answers)
+        // These are sent to agent but should not be displayed in UI
         {
-          const userUpdate = update as { content?: unknown }
+          const userUpdate = update as { content?: unknown; _internal?: boolean }
+          if (userUpdate._internal) {
+            break // Skip internal messages - not displayed in UI
+          }
+
+          // Flush any pending assistant message
+          flushAssistantMessage()
+          // Add user message - supports multiple formats for backward compatibility
           const userBlocks: ContentBlock[] = []
           const content = userUpdate.content
 
@@ -225,25 +245,55 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
 
       case 'tool_call':
         if ('toolCallId' in update) {
-          // Flush pending text/thought before tool call to preserve order
-          flushPendingThought()
-          flushPendingText()
+          // Extract _meta.claudeCode.toolName (most reliable tool name source)
+          const meta = update._meta as { claudeCode?: { toolName?: string } } | undefined
 
-          const toolCall: ToolCall = {
-            id: update.toolCallId,
-            title: update.title || 'Tool Call',
-            status: update.status || 'pending',
-            kind: update.kind,
-            input: typeof update.rawInput === 'string'
-              ? update.rawInput
-              : update.rawInput && Object.keys(update.rawInput).length > 0
-                ? JSON.stringify(update.rawInput, null, 2)
-                : undefined,
-          }
-          toolCallMap.set(update.toolCallId, toolCall)
+          // Check if toolCall already exists
+          let toolCall = toolCallMap.get(update.toolCallId)
+          if (toolCall) {
+            // Update existing toolCall (keep reference unchanged so currentBlocks updates too)
+            if (update.status) toolCall.status = update.status
+            if (update.title) toolCall.title = update.title
+            if (meta?.claudeCode?.toolName) toolCall.toolName = meta.claudeCode.toolName
+            if (update.kind) toolCall.kind = update.kind
+            if (update.rawInput && Object.keys(update.rawInput).length > 0) {
+              toolCall.rawInput = update.rawInput as Record<string, unknown>
+              toolCall.input = typeof update.rawInput === 'string'
+                ? update.rawInput
+                : JSON.stringify(update.rawInput, null, 2)
+            }
+            if (update.rawOutput) {
+              toolCall.output = typeof update.rawOutput === 'string'
+                ? update.rawOutput
+                : JSON.stringify(update.rawOutput, null, 2)
+            }
+          } else {
+            // Create new toolCall
+            // Flush pending text/thought before tool call to preserve order
+            flushPendingThought()
+            flushPendingText()
 
-          // Add tool call block if not already added
-          if (!addedToolCallIds.has(update.toolCallId)) {
+            toolCall = {
+              id: update.toolCallId,
+              title: update.title || 'Tool Call',
+              status: update.status || 'pending',
+              kind: update.kind,
+              toolName: meta?.claudeCode?.toolName,
+              rawInput: update.rawInput as Record<string, unknown> | undefined,
+              input: typeof update.rawInput === 'string'
+                ? update.rawInput
+                : update.rawInput && Object.keys(update.rawInput).length > 0
+                  ? JSON.stringify(update.rawInput, null, 2)
+                  : undefined,
+            }
+            if (update.rawOutput) {
+              toolCall.output = typeof update.rawOutput === 'string'
+                ? update.rawOutput
+                : JSON.stringify(update.rawOutput, null, 2)
+            }
+            toolCallMap.set(update.toolCallId, toolCall)
+
+            // Add tool call block
             currentBlocks.push({ type: 'tool_call', toolCall })
             addedToolCallIds.add(update.toolCallId)
           }
@@ -252,13 +302,18 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
 
       case 'tool_call_update':
         if ('toolCallId' in update) {
+          // Extract _meta.claudeCode.toolName
+          const updateMeta = update._meta as { claudeCode?: { toolName?: string } } | undefined
+
           // Get or create the tool call entry
           let toolCall = toolCallMap.get(update.toolCallId)
           if (toolCall) {
             // Update existing tool call in place
             if (update.status) toolCall.status = update.status
             if (update.title) toolCall.title = update.title
+            if (updateMeta?.claudeCode?.toolName) toolCall.toolName = updateMeta.claudeCode.toolName
             if (update.rawInput && Object.keys(update.rawInput).length > 0) {
+              toolCall.rawInput = update.rawInput as Record<string, unknown>
               toolCall.input = typeof update.rawInput === 'string'
                 ? update.rawInput
                 : JSON.stringify(update.rawInput, null, 2)
@@ -279,6 +334,8 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
               title: update.title || 'Tool Call',
               status: update.status || 'pending',
               kind: update.kind ?? undefined,
+              toolName: updateMeta?.claudeCode?.toolName,
+              rawInput: update.rawInput as Record<string, unknown> | undefined,
             }
             if (update.rawInput && Object.keys(update.rawInput).length > 0) {
               toolCall.input = typeof update.rawInput === 'string'
@@ -297,6 +354,41 @@ function groupUpdatesIntoMessages(updates: StoredSessionUpdate[]): Message[] {
               currentBlocks.push({ type: 'tool_call', toolCall })
               addedToolCallIds.add(update.toolCallId)
             }
+          }
+        }
+        break
+
+      case 'plan':
+        // Handle plan updates from TodoWrite tool
+        if ('entries' in update && Array.isArray(update.entries)) {
+          flushPendingThought()
+          flushPendingText()
+          const entries: PlanEntry[] = update.entries.map((entry: { content?: string; status?: string; priority?: string }) => ({
+            content: entry.content || '',
+            status: (entry.status as PlanEntry['status']) || 'pending',
+            priority: entry.priority as PlanEntry['priority'],
+          }))
+          if (entries.length > 0) {
+            // Find existing plan block and update it instead of creating new one
+            const existingPlanIndex = currentBlocks.findIndex(b => b.type === 'plan')
+            if (existingPlanIndex >= 0) {
+              ;(currentBlocks[existingPlanIndex] as { type: 'plan'; entries: PlanEntry[] }).entries = entries
+            } else {
+              currentBlocks.push({ type: 'plan', entries })
+            }
+          }
+        }
+        break
+
+      case 'askuserquestion_response':
+        // Handle persisted AskUserQuestion response (for state restoration after restart)
+        if ('toolCallId' in update && 'response' in update) {
+          const responseUpdate = update as { toolCallId: string; response: AnsweredResponse }
+          const toolCall = toolCallMap.get(responseUpdate.toolCallId)
+          if (toolCall) {
+            // Mark tool call as completed and attach the persisted response
+            toolCall.status = 'completed'
+            toolCall.answeredResponse = responseUpdate.response
           }
         }
         break
@@ -366,6 +458,8 @@ function MessageBubble({ message }: MessageBubbleProps) {
                 className="max-w-[300px] max-h-[300px] rounded-md object-cover"
               />
             )
+          case 'plan':
+            return <PlanBlockView key={`plan-${idx}`} entries={block.entries} />
           default:
             return null
         }
@@ -568,5 +662,76 @@ function SessionInitializing() {
         <p className="text-sm text-muted-foreground">Initializing agent...</p>
       </div>
     </div>
+  )
+}
+
+// Plan block view - displays todo list from TodoWrite tool (collapsible)
+function PlanBlockView({ entries }: { entries: PlanEntry[] }) {
+  const [isExpanded, setIsExpanded] = useState(false)
+
+  if (!entries || entries.length === 0) return null
+
+  const completedCount = entries.filter((e) => e.status === 'completed').length
+  const inProgressEntry = entries.find((e) => e.status === 'in_progress')
+  const totalCount = entries.length
+
+  return (
+    <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
+      <CollapsibleTrigger className="flex w-full items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+        {/* Status indicator */}
+        {inProgressEntry ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--tool-running)]" />
+        ) : completedCount === totalCount ? (
+          <CheckCircle2 className="h-3.5 w-3.5 text-[var(--tool-success)]" />
+        ) : (
+          <Circle className="h-3.5 w-3.5" />
+        )}
+
+        {/* Title with progress */}
+        <span className="text-secondary-foreground">Tasks</span>
+        <span className="text-xs text-muted-foreground">
+          {completedCount}/{totalCount}
+        </span>
+
+        {/* Current task hint when collapsed */}
+        {!isExpanded && inProgressEntry && (
+          <span className="text-xs text-muted-foreground truncate max-w-[200px]">
+            – {inProgressEntry.content}
+          </span>
+        )}
+
+        {/* Chevron */}
+        <ChevronDown className={cn(
+          "ml-auto h-3.5 w-3.5 transition-transform",
+          isExpanded && "rotate-180"
+        )} />
+      </CollapsibleTrigger>
+
+      <CollapsibleContent>
+        <div className="mt-2 space-y-1 pl-5">
+          {entries.map((entry, idx) => (
+            <div key={idx} className="flex items-start gap-2 text-xs">
+              {/* Status icon - smaller */}
+              {entry.status === 'completed' ? (
+                <CheckCircle2 className="h-3 w-3 text-[var(--tool-success)] flex-shrink-0 mt-0.5" />
+              ) : entry.status === 'in_progress' ? (
+                <Loader2 className="h-3 w-3 text-[var(--tool-running)] flex-shrink-0 mt-0.5 animate-spin" />
+              ) : (
+                <Circle className="h-3 w-3 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
+              )}
+              {/* Content - smaller text */}
+              <span className={cn(
+                'leading-relaxed',
+                entry.status === 'completed' && 'text-muted-foreground line-through',
+                entry.status === 'in_progress' && 'text-secondary-foreground',
+                entry.status === 'pending' && 'text-muted-foreground'
+              )}>
+                {entry.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
