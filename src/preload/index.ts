@@ -110,6 +110,18 @@ const electronAPI: ElectronAPI = {
     const listener = () => callback()
     ipcRenderer.on(IPC_CHANNELS.APP_FOCUS, listener)
     return () => ipcRenderer.removeListener(IPC_CHANNELS.APP_FOCUS, listener)
+  },
+
+  // Auto-update
+  checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+  downloadUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_DOWNLOAD),
+  installUpdate: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL),
+
+  onUpdateStatus: (callback) => {
+    const listener = (_event: Electron.IpcRendererEvent, status: unknown) =>
+      callback(status as Parameters<typeof callback>[0])
+    ipcRenderer.on(IPC_CHANNELS.UPDATE_STATUS, listener)
+    return () => ipcRenderer.removeListener(IPC_CHANNELS.UPDATE_STATUS, listener)
   }
 }
 
