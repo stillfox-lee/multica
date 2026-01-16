@@ -10,6 +10,11 @@ import { useFileChangeStore } from '../stores/fileChangeStore'
 import { toast } from 'sonner'
 import { getErrorMessage } from '../utils/error'
 
+// ACP standard tool kinds that modify files
+const FILE_MODIFYING_KINDS = new Set(['edit', 'write', 'delete'])
+// Actual tool names from _meta.claudeCode.toolName (case-insensitive)
+const FILE_MODIFYING_TOOL_NAMES = new Set(['write', 'edit', 'bash', 'notebookedit'])
+
 export interface AppState {
   // Sessions
   sessions: MulticaSession[]
@@ -98,9 +103,6 @@ export function useApp(): AppState & AppActions {
     // Get triggerRefresh from store for file change detection
     const triggerRefresh = useFileChangeStore.getState().triggerRefresh
 
-    // Tool kinds that modify files (case-insensitive)
-    const FILE_MODIFYING_TOOLS = new Set(['write', 'edit', 'notebookedit', 'bash'])
-
     const unsubMessage = window.electronAPI.onAgentMessage((message) => {
       // Only process messages for the current session
       // message.sessionId is ACP Agent Session ID, compare with currentAgentSessionId
@@ -113,26 +115,18 @@ export function useApp(): AppState & AppActions {
       const kind = update?.kind?.toLowerCase() || ''
       const status = update?.status?.toLowerCase() || ''
 
-      // Debug logging for tool updates
-      if (update?.sessionUpdate === 'tool_call_update' || update?.sessionUpdate === 'tool_call') {
-        console.log('[FileChange] Tool event:', {
-          sessionUpdate: update.sessionUpdate,
-          kind,
-          status,
-          title: update?.title,
-          rawUpdate: update
-        })
-      }
+      // Get actual tool name from _meta.claudeCode.toolName
+      const meta = update?._meta as { claudeCode?: { toolName?: string } } | undefined
+      const toolName = meta?.claudeCode?.toolName?.toLowerCase() || ''
 
       // Trigger refresh when a file-modifying tool completes
+      // Check both ACP kind and actual toolName for compatibility
+      const isFileModifying =
+        FILE_MODIFYING_KINDS.has(kind) || FILE_MODIFYING_TOOL_NAMES.has(toolName)
       // More lenient: trigger on any status that isn't "running" or "pending" or "in_progress"
       const isCompleted = status && !['running', 'pending', 'in_progress', ''].includes(status)
-      if (
-        update?.sessionUpdate === 'tool_call_update' &&
-        FILE_MODIFYING_TOOLS.has(kind) &&
-        isCompleted
-      ) {
-        console.log('[FileChange] Triggering refresh for:', { kind, status })
+
+      if (update?.sessionUpdate === 'tool_call_update' && isFileModifying && isCompleted) {
         triggerRefresh()
       }
 
