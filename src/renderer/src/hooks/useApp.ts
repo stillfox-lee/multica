@@ -24,7 +24,12 @@ const AGENT_AUTH_COMMANDS: Record<string, string> = {
 
 // Check if error is authentication related
 function isAuthError(errorMessage: string): boolean {
-  const authKeywords = ['authentication required', 'unauthorized', 'not authenticated', 'login required']
+  const authKeywords = [
+    'authentication required',
+    'unauthorized',
+    'not authenticated',
+    'login required'
+  ]
   const lowerMessage = errorMessage.toLowerCase()
   return authKeywords.some((keyword) => lowerMessage.includes(keyword))
 }
