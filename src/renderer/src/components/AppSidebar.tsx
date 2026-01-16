@@ -77,7 +77,7 @@ function SessionItem({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <Tooltip delayDuration={600}>
+      <Tooltip delayDuration={600} open={isActive ? false : undefined}>
         <TooltipTrigger asChild>
           <SidebarMenuButton
             isActive={isActive}
@@ -95,11 +95,11 @@ function SessionItem({
                 <span className="truncate text-sm font-medium">{getSessionTitle(session)}</span>
                 {/* Status indicators - invalid directory has highest priority */}
                 {isInvalid ? (
-                  <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                 ) : needsPermission ? (
-                  <CirclePause className="h-3.5 w-3.5 flex-shrink-0 text-amber-500" />
+                  <CirclePause className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                 ) : isProcessing ? (
-                  <Loader2 className="h-3 w-3 flex-shrink-0 animate-spin text-primary" />
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
                 ) : null}
               </div>
 
@@ -116,7 +116,7 @@ function SessionItem({
                 onDelete()
               }}
               className={cn(
-                'flex-shrink-0 self-start rounded p-1 transition-opacity duration-150',
+                'shrink-0 self-start rounded p-1 transition-opacity duration-150',
                 'hover:bg-muted active:bg-muted',
                 isHovered ? 'opacity-50 hover:opacity-100' : 'opacity-0'
               )}
@@ -125,7 +125,7 @@ function SessionItem({
             </button>
           </SidebarMenuButton>
         </TooltipTrigger>
-        <TooltipContent side="right">
+        <TooltipContent>
           {isInvalid ? (
             <p className="text-amber-500">Directory not found: {session.workingDirectory}</p>
           ) : (
