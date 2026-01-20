@@ -124,11 +124,11 @@ describe('Conductor', () => {
     it('should track running sessions', async () => {
       const session = await conductor.createSession('/test/project', mockAgentConfig)
 
-      // Session is not running immediately after creation (lazy start)
-      expect(conductor.isSessionRunning(session.id)).toBe(false)
-      expect(conductor.getRunningSessionIds()).not.toContain(session.id)
+      // Session is running immediately after creation (immediate start)
+      expect(conductor.isSessionRunning(session.id)).toBe(true)
+      expect(conductor.getRunningSessionIds()).toContain(session.id)
 
-      // After sending a prompt, agent starts and session becomes running
+      // After sending a prompt, session is still running
       await conductor.sendPrompt(session.id, [{ type: 'text', text: 'Hello' }])
       expect(conductor.isSessionRunning(session.id)).toBe(true)
       expect(conductor.getRunningSessionIds()).toContain(session.id)
@@ -146,14 +146,10 @@ describe('Conductor', () => {
       const session1 = await conductor.createSession('/test/project1', mockAgentConfig)
       const session2 = await conductor.createSession('/test/project2', mockAgentConfig)
 
-      // Sessions are not running until prompts are sent (lazy start)
-      expect(conductor.getRunningSessionIds().length).toBe(0)
-
-      // Start agents by sending prompts
-      await conductor.sendPrompt(session1.id, [{ type: 'text', text: 'Hello' }])
-      await conductor.sendPrompt(session2.id, [{ type: 'text', text: 'Hello' }])
-
+      // Sessions are running immediately after creation (immediate start)
       expect(conductor.getRunningSessionIds().length).toBe(2)
+      expect(conductor.getRunningSessionIds()).toContain(session1.id)
+      expect(conductor.getRunningSessionIds()).toContain(session2.id)
 
       await conductor.stopAllSessions()
 

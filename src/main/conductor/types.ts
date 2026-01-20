@@ -8,7 +8,9 @@ import type {
   ClientSideConnection,
   SessionNotification,
   RequestPermissionRequest,
-  RequestPermissionResponse
+  RequestPermissionResponse,
+  SessionModeState,
+  SessionModelState
 } from '@agentclientprotocol/sdk'
 import type { AgentProcess } from './AgentProcess'
 import type {
@@ -36,6 +38,10 @@ export interface SessionAgent {
   agentSessionId: string
   /** Whether the first prompt needs history prepended (for resumed sessions) */
   needsHistoryReplay: boolean
+  /** Mode state from ACP server (available modes and current mode) */
+  sessionModeState: SessionModeState | null
+  /** Model state from ACP server (available models and current model) */
+  sessionModelState: SessionModelState | null
 }
 
 /**
@@ -226,14 +232,17 @@ export interface ISessionLifecycle {
   /** Initialize the lifecycle manager */
   initialize(): Promise<void>
 
-  /** Create a new session (agent starts lazily on first prompt) */
+  /** Create a new session (agent starts immediately) */
   create(cwd: string, agentConfig: AgentConfig): Promise<MulticaSession>
 
-  /** Load a session without starting its agent (lazy loading) */
+  /** Load a session without starting its agent */
   load(sessionId: string): Promise<MulticaSession>
 
   /** Resume an existing session (starts a new agent process) */
   resume(sessionId: string): Promise<MulticaSession>
+
+  /** Start agent for a session (if not already running) */
+  startAgent(sessionId: string): Promise<MulticaSession>
 
   /** Delete a session and stop its agent */
   delete(sessionId: string): Promise<void>

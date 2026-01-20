@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { IPC_CHANNELS } from '../shared/ipc-channels'
 import type { ElectronAPI, OpenWithOptions } from '../shared/electron-api'
-import type { ListSessionsOptions, MulticaSession } from '../shared/types'
+import type { ListSessionsOptions, MulticaSession, SessionModeId, ModelId } from '../shared/types'
 import type { MessageContent } from '../shared/types/message'
 
 // Electron API exposed to renderer process
@@ -26,6 +26,9 @@ const electronAPI: ElectronAPI = {
 
   loadSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LOAD, sessionId),
 
+  startSessionAgent: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_START_AGENT, sessionId),
+
   resumeSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_RESUME, sessionId),
 
   deleteSession: (sessionId: string) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_DELETE, sessionId),
@@ -35,6 +38,19 @@ const electronAPI: ElectronAPI = {
 
   switchSessionAgent: (sessionId: string, newAgentId: string) =>
     ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH_AGENT, sessionId, newAgentId),
+
+  // Mode/Model management
+  getSessionModes: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_MODES, sessionId),
+
+  getSessionModels: (sessionId: string) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_MODELS, sessionId),
+
+  setSessionMode: (sessionId: string, modeId: SessionModeId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_SET_MODE, sessionId, modeId),
+
+  setSessionModel: (sessionId: string, modelId: ModelId) =>
+    ipcRenderer.invoke(IPC_CHANNELS.SESSION_SET_MODEL, sessionId, modelId),
 
   // Configuration
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.CONFIG_GET),

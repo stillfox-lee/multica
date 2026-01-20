@@ -416,7 +416,7 @@ async function cmdStatus(state: CLIState): Promise<void> {
   // Current session
   if (state.currentSession) {
     const isRunning = state.conductor.isSessionRunning(state.currentSession.id)
-    const agentConfig = state.conductor.getSessionAgent(state.currentSession.id)
+    const agentConfig = state.conductor.getSessionAgentConfig(state.currentSession.id)
     print(`  Current Session: ${c.green}${state.currentSession.id.slice(0, 8)}${c.reset}`)
     print(
       `    Agent: ${agentConfig?.name || 'unknown'} (${isRunning ? `${c.green}running${c.reset}` : `${c.red}stopped${c.reset}`})`

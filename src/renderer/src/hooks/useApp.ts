@@ -2,7 +2,14 @@
  * Main application state hook
  */
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { MulticaSession, StoredSessionUpdate } from '../../../shared/types'
+import type {
+  MulticaSession,
+  StoredSessionUpdate,
+  SessionModeState,
+  SessionModelState,
+  SessionModeId,
+  ModelId
+} from '../../../shared/types'
 import type { RunningSessionsStatus } from '../../../shared/electron-api'
 import type { MessageContent } from '../../../shared/types/message'
 import { usePermissionStore } from '../stores/permissionStore'
@@ -45,6 +52,10 @@ export interface AppState {
   isProcessing: boolean
   isInitializing: boolean
 
+  // Mode/Model (from ACP server)
+  sessionModeState: SessionModeState | null
+  sessionModelState: SessionModelState | null
+
   // UI
   isSwitchingAgent: boolean
 }
@@ -61,6 +72,10 @@ export interface AppActions {
   sendPrompt: (content: MessageContent) => Promise<void>
   cancelRequest: () => Promise<void>
   switchSessionAgent: (newAgentId: string) => Promise<void>
+
+  // Mode/Model actions
+  setSessionMode: (modeId: SessionModeId) => Promise<void>
+  setSessionModel: (modelId: ModelId) => Promise<void>
 }
 
 export function useApp(): AppState & AppActions {
@@ -82,6 +97,8 @@ export function useApp(): AppState & AppActions {
   })
   const [isInitializing, setIsInitializing] = useState(false)
   const [isSwitchingAgent, setIsSwitchingAgent] = useState(false)
+  const [sessionModeState, setSessionModeState] = useState<SessionModeState | null>(null)
+  const [sessionModelState, setSessionModelState] = useState<SessionModelState | null>(null)
 
   // Derive isProcessing from processingSessionIds (per-session isolation)
   const isProcessing = currentSession
@@ -227,6 +244,23 @@ export function useApp(): AppState & AppActions {
     }
   }, [])
 
+  // Load mode/model state for current session (if agent supports it)
+  const loadSessionModeModel = useCallback(async (sessionId: string) => {
+    try {
+      const [modes, models] = await Promise.all([
+        window.electronAPI.getSessionModes(sessionId),
+        window.electronAPI.getSessionModels(sessionId)
+      ])
+      setSessionModeState(modes)
+      setSessionModelState(models)
+    } catch (err) {
+      console.error('Failed to load session mode/model:', err)
+      // Reset to null on error (agent may not support modes/models)
+      setSessionModeState(null)
+      setSessionModelState(null)
+    }
+  }, [])
+
   // Validate current session directory exists (called on app focus)
   const validateCurrentSessionDirectory = useCallback(async () => {
     if (!currentSession) return
@@ -270,41 +304,62 @@ export function useApp(): AppState & AppActions {
         setSessionUpdates([])
         await loadSessions()
         await loadRunningStatus()
+        // Agent starts immediately now, load mode/model state
+        await loadSessionModeModel(session.id)
       } catch (err) {
         toast.error(`Failed to create session: ${getErrorMessage(err)}`)
       } finally {
         setIsInitializing(false)
       }
     },
-    [loadSessions, loadRunningStatus]
+    [loadSessions, loadRunningStatus, loadSessionModeModel]
   )
 
-  const selectSession = useCallback(async (sessionId: string) => {
-    try {
-      // Mark this as the pending session (for rapid switching protection)
-      pendingSessionRef.current = sessionId
+  const selectSession = useCallback(
+    async (sessionId: string) => {
+      try {
+        // Mark this as the pending session (for rapid switching protection)
+        pendingSessionRef.current = sessionId
 
-      // Load session and history in parallel
-      const [session, data] = await Promise.all([
-        window.electronAPI.loadSession(sessionId),
-        window.electronAPI.getSession(sessionId)
-      ])
+        // Load session and history in parallel
+        const [session, data] = await Promise.all([
+          window.electronAPI.loadSession(sessionId),
+          window.electronAPI.getSession(sessionId)
+        ])
 
-      // Verify: user might have switched to another session while loading
-      if (pendingSessionRef.current !== sessionId) {
-        return // Discard, user already switched elsewhere
+        // Verify: user might have switched to another session while loading
+        if (pendingSessionRef.current !== sessionId) {
+          return // Discard, user already switched elsewhere
+        }
+
+        // Update both states together - React will batch them into one render
+        setCurrentSession(session)
+        setSessionUpdates(data?.updates ?? [])
+
+        // Start agent if not already running
+        const status = await window.electronAPI.getAgentStatus()
+        if (!status.sessionIds.includes(sessionId)) {
+          setIsInitializing(true)
+          try {
+            const updatedSession = await window.electronAPI.startSessionAgent(sessionId)
+            if (pendingSessionRef.current !== sessionId) return
+            setCurrentSession(updatedSession)
+          } finally {
+            setIsInitializing(false)
+          }
+        }
+
+        // Agent now guaranteed running, load mode/model
+        await loadSessionModeModel(sessionId)
+      } catch (err) {
+        // Only show error if this is still the pending session
+        if (pendingSessionRef.current === sessionId) {
+          toast.error(`Failed to select session: ${getErrorMessage(err)}`)
+        }
       }
-
-      // Update both states together - React will batch them into one render
-      setCurrentSession(session)
-      setSessionUpdates(data?.updates ?? [])
-    } catch (err) {
-      // Only show error if this is still the pending session
-      if (pendingSessionRef.current === sessionId) {
-        toast.error(`Failed to select session: ${getErrorMessage(err)}`)
-      }
-    }
-  }, [])
+    },
+    [loadSessionModeModel]
+  )
 
   const deleteSession = useCallback(
     async (sessionId: string) => {
@@ -326,6 +381,8 @@ export function useApp(): AppState & AppActions {
   const clearCurrentSession = useCallback(() => {
     setCurrentSession(null)
     setSessionUpdates([])
+    setSessionModeState(null)
+    setSessionModelState(null)
   }, [])
 
   const sendPrompt = useCallback(
@@ -351,6 +408,10 @@ export function useApp(): AppState & AppActions {
         setSessionUpdates((prev) => [...prev, userUpdate])
 
         await window.electronAPI.sendPrompt(currentSession.id, content)
+
+        // After successful prompt, agent is guaranteed to be running
+        // Reload mode/model state (important for lazy-started sessions)
+        await loadSessionModeModel(currentSession.id)
       } catch (err) {
         const errorMessage = getErrorMessage(err)
 
@@ -380,7 +441,7 @@ export function useApp(): AppState & AppActions {
         }
       }
     },
-    [currentSession]
+    [currentSession, loadSessionModeModel]
   )
 
   const cancelRequest = useCallback(async () => {
@@ -408,6 +469,8 @@ export function useApp(): AppState & AppActions {
         )
         setCurrentSession(updatedSession)
         await loadRunningStatus()
+        // Reload mode/model state for the new agent
+        await loadSessionModeModel(currentSession.id)
         toast.success(`Successfully switched to ${newAgentId}`)
       } catch (err) {
         toast.error(`Failed to switch agent: ${getErrorMessage(err)}`)
@@ -415,7 +478,44 @@ export function useApp(): AppState & AppActions {
         setIsSwitchingAgent(false)
       }
     },
-    [currentSession, loadRunningStatus]
+    [currentSession, loadRunningStatus, loadSessionModeModel]
+  )
+
+  // Mode/Model actions
+  const setSessionMode = useCallback(
+    async (modeId: SessionModeId) => {
+      if (!currentSession) {
+        toast.error('No active session')
+        return
+      }
+
+      try {
+        await window.electronAPI.setSessionMode(currentSession.id, modeId)
+        // Optimistic update
+        setSessionModeState((prev) => (prev ? { ...prev, currentModeId: modeId } : null))
+      } catch (err) {
+        toast.error(`Failed to set mode: ${getErrorMessage(err)}`)
+      }
+    },
+    [currentSession]
+  )
+
+  const setSessionModel = useCallback(
+    async (modelId: ModelId) => {
+      if (!currentSession) {
+        toast.error('No active session')
+        return
+      }
+
+      try {
+        await window.electronAPI.setSessionModel(currentSession.id, modelId)
+        // Optimistic update
+        setSessionModelState((prev) => (prev ? { ...prev, currentModelId: modelId } : null))
+      } catch (err) {
+        toast.error(`Failed to set model: ${getErrorMessage(err)}`)
+      }
+    },
+    [currentSession]
   )
 
   return {
@@ -426,6 +526,8 @@ export function useApp(): AppState & AppActions {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    sessionModeState,
+    sessionModelState,
     isSwitchingAgent,
 
     // Actions
@@ -436,6 +538,8 @@ export function useApp(): AppState & AppActions {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
-    switchSessionAgent
+    switchSessionAgent,
+    setSessionMode,
+    setSessionModel
   }
 }

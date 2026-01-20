@@ -8,7 +8,12 @@ import { DEFAULT_AGENTS } from '../config/defaults'
 import { checkAgents, checkAgent } from '../utils/agent-check'
 import { installAgent } from '../utils/agent-install'
 import type { Conductor } from '../conductor/Conductor'
-import type { ListSessionsOptions, MulticaSession } from '../../shared/types'
+import type {
+  ListSessionsOptions,
+  MulticaSession,
+  SessionModeId,
+  ModelId
+} from '../../shared/types'
 import type { FileTreeNode, DetectedApp } from '../../shared/electron-api'
 import type { MessageContent } from '../../shared/types/message'
 import * as fs from 'fs'
@@ -152,6 +157,11 @@ export function registerIPCHandlers(conductor: Conductor): void {
     return withDirectoryExists(session)
   })
 
+  ipcMain.handle(IPC_CHANNELS.SESSION_START_AGENT, async (_event, sessionId: string) => {
+    const session = await conductor.startSessionAgent(sessionId)
+    return withDirectoryExists(session)
+  })
+
   ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (_event, sessionId: string) => {
     await conductor.deleteSession(sessionId)
     return { success: true }
@@ -178,6 +188,68 @@ export function registerIPCHandlers(conductor: Conductor): void {
       try {
         const session = await conductor.switchSessionAgent(sessionId, newAgentId)
         return withDirectoryExists(session)
+      } catch (err) {
+        throw new Error(extractErrorMessage(err))
+      }
+    }
+  )
+
+  // --- Mode/Model handlers ---
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_GET_MODES, async (_event, sessionId: string) => {
+    const sessionAgent = conductor.getSessionAgent(sessionId)
+    return sessionAgent?.sessionModeState ?? null
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SESSION_GET_MODELS, async (_event, sessionId: string) => {
+    const sessionAgent = conductor.getSessionAgent(sessionId)
+    return sessionAgent?.sessionModelState ?? null
+  })
+
+  ipcMain.handle(
+    IPC_CHANNELS.SESSION_SET_MODE,
+    async (_event, sessionId: string, modeId: SessionModeId) => {
+      const sessionAgent = conductor.getSessionAgent(sessionId)
+      if (!sessionAgent) {
+        throw new Error('Session not found or agent not running')
+      }
+
+      try {
+        // Call ACP server to set mode
+        await sessionAgent.connection.setSessionMode({
+          sessionId: sessionAgent.agentSessionId,
+          modeId
+        })
+
+        // Optimistic update local state
+        if (sessionAgent.sessionModeState) {
+          sessionAgent.sessionModeState.currentModeId = modeId
+        }
+      } catch (err) {
+        throw new Error(extractErrorMessage(err))
+      }
+    }
+  )
+
+  ipcMain.handle(
+    IPC_CHANNELS.SESSION_SET_MODEL,
+    async (_event, sessionId: string, modelId: ModelId) => {
+      const sessionAgent = conductor.getSessionAgent(sessionId)
+      if (!sessionAgent) {
+        throw new Error('Session not found or agent not running')
+      }
+
+      try {
+        // Call ACP server to set model (unstable API)
+        await sessionAgent.connection.unstable_setSessionModel({
+          sessionId: sessionAgent.agentSessionId,
+          modelId
+        })
+
+        // Optimistic update local state
+        if (sessionAgent.sessionModelState) {
+          sessionAgent.sessionModelState.currentModelId = modelId
+        }
       } catch (err) {
         throw new Error(extractErrorMessage(err))
       }
