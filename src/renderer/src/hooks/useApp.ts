@@ -14,6 +14,7 @@ import type { RunningSessionsStatus } from '../../../shared/electron-api'
 import type { MessageContent } from '../../../shared/types/message'
 import { usePermissionStore } from '../stores/permissionStore'
 import { useFileChangeStore } from '../stores/fileChangeStore'
+import { useCommandStore } from '../stores/commandStore'
 import { toast } from 'sonner'
 import { getErrorMessage } from '../utils/error'
 
@@ -86,6 +87,11 @@ export function useApp(): AppState & AppActions {
   // Track pending session selection to handle rapid switching
   const pendingSessionRef = useRef<string | null>(null)
 
+  // Track current session ID synchronously (avoids race condition with subscription)
+  // This ref is updated synchronously when state changes, ensuring the subscription
+  // callback always has access to the latest session ID without needing to re-subscribe
+  const currentSessionIdRef = useRef<string | null>(null)
+
   // State
   const [sessions, setSessions] = useState<MulticaSession[]>([])
   const [currentSession, setCurrentSession] = useState<MulticaSession | null>(null)
@@ -118,6 +124,13 @@ export function useApp(): AppState & AppActions {
   // Get current session ID for stable reference in effect
   const currentSessionId = currentSession?.id
 
+  // Keep currentSessionIdRef synchronized with state
+  // This runs synchronously during render, ensuring the ref is always up-to-date
+  // before any event handlers can fire
+  useEffect(() => {
+    currentSessionIdRef.current = currentSessionId ?? null
+  }, [currentSessionId])
+
   // Subscribe to session metadata updates (e.g., when agentSessionId changes after lazy start)
   // This is critical for receiving messages after app restart
   useEffect(() => {
@@ -139,18 +152,21 @@ export function useApp(): AppState & AppActions {
     }
   }, [currentSessionId])
 
-  // Get current agentSessionId for stable reference in effect
-  const currentAgentSessionId = currentSession?.agentSessionId
-
-  // Subscribe to agent events
+  // Subscribe to agent events (persistent subscription - only runs once on mount)
+  // Uses refs to access current session ID, avoiding race condition where subscription
+  // is being recreated while events are arriving
   useEffect(() => {
     // Get triggerRefresh from store for file change detection
     const triggerRefresh = useFileChangeStore.getState().triggerRefresh
+    // Get setAvailableCommands from store for command updates
+    const setAvailableCommands = useCommandStore.getState().setAvailableCommands
 
     const unsubMessage = window.electronAPI.onAgentMessage((message) => {
       // Only process messages for the current session
-      // message.sessionId is ACP Agent Session ID, compare with currentAgentSessionId
-      if (!currentAgentSessionId || message.sessionId !== currentAgentSessionId) {
+      // Use ref (currentSessionIdRef) to get the latest session ID synchronously
+      // This avoids race condition where useEffect hasn't re-subscribed after session change
+      const sessionId = currentSessionIdRef.current
+      if (!sessionId || message.multicaSessionId !== sessionId) {
         return
       }
 
@@ -185,6 +201,16 @@ export function useApp(): AppState & AppActions {
         }
       }
 
+      // Handle available_commands_update event: update slash commands store
+      if (update?.sessionUpdate === 'available_commands_update') {
+        const commandsUpdate = update as { availableCommands?: unknown[] }
+        if (commandsUpdate.availableCommands) {
+          setAvailableCommands(
+            commandsUpdate.availableCommands as Parameters<typeof setAvailableCommands>[0]
+          )
+        }
+      }
+
       // Pass through original update without any accumulation
       // ChatView is responsible for accumulating chunks into complete messages
       // Include sequence number for proper ordering of concurrent updates
@@ -216,18 +242,18 @@ export function useApp(): AppState & AppActions {
       addPendingRequest(request)
     })
 
-    // Copy ref to local variable for cleanup
-    const currentToolKindMap = toolKindMapRef.current
-
     return () => {
       unsubMessage()
       unsubStatus()
       unsubError()
       unsubPermission()
-      // Clear the toolKindMap when session changes to avoid stale data
-      currentToolKindMap.clear()
     }
-  }, [currentAgentSessionId])
+  }, [])
+
+  // Clear toolKindMap when session changes to avoid stale data
+  useEffect(() => {
+    toolKindMapRef.current.clear()
+  }, [currentSessionId])
 
   // Actions
   const loadSessions = useCallback(async () => {
@@ -251,17 +277,20 @@ export function useApp(): AppState & AppActions {
   // Load mode/model state for current session (if agent supports it)
   const loadSessionModeModel = useCallback(async (sessionId: string) => {
     try {
-      const [modes, models] = await Promise.all([
+      const [modes, models, commands] = await Promise.all([
         window.electronAPI.getSessionModes(sessionId),
-        window.electronAPI.getSessionModels(sessionId)
+        window.electronAPI.getSessionModels(sessionId),
+        window.electronAPI.getSessionCommands(sessionId)
       ])
       setSessionModeState(modes)
       setSessionModelState(models)
+      useCommandStore.getState().setAvailableCommands(commands)
     } catch (err) {
       console.error('Failed to load session mode/model:', err)
       // Reset to null on error (agent may not support modes/models)
       setSessionModeState(null)
       setSessionModelState(null)
+      useCommandStore.getState().clearCommands()
     }
   }, [])
 
@@ -388,6 +417,7 @@ export function useApp(): AppState & AppActions {
     setSessionUpdates([])
     setSessionModeState(null)
     setSessionModelState(null)
+    useCommandStore.getState().clearCommands()
   }, [])
 
   const sendPrompt = useCallback(

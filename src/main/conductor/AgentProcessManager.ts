@@ -10,6 +10,7 @@
 import { ClientSideConnection, ndJsonStream, PROTOCOL_VERSION } from '@agentclientprotocol/sdk'
 import { AgentProcess } from './AgentProcess'
 import { createAcpClient } from './AcpClientFactory'
+import type { AvailableCommand } from '@agentclientprotocol/sdk/dist/schema/types.gen'
 import type { AgentConfig } from '../../shared/types'
 import type {
   IAgentProcessManager,
@@ -22,6 +23,7 @@ import type {
 export class AgentProcessManager implements IAgentProcessManager {
   private sessionStore: ISessionStore | null
   private events: AgentProcessManagerOptions['events']
+  private pendingAvailableCommands: Map<string, AvailableCommand[]> = new Map()
 
   /**
    * Map of Multica sessionId -> agent state (each session has its own process)
@@ -76,6 +78,24 @@ export class AgentProcessManager implements IAgentProcessManager {
               if (sessionAgent?.sessionModelState) {
                 sessionAgent.sessionModelState.currentModelId = modelId
               }
+            },
+            // Handle available commands updates
+            onAvailableCommandsUpdate: (commands) => {
+              const sessionAgent = this.sessions.get(sessionId)
+              if (sessionAgent) {
+                sessionAgent.availableCommands = commands
+                console.log(
+                  `[AgentProcessManager] Available commands updated for session ${sessionId} (${commands.length})`
+                )
+                return
+              }
+
+              // Some agents (e.g., Codex) may emit available_commands_update before
+              // the session is fully registered. Cache and apply after session creation.
+              console.log(
+                `[AgentProcessManager] Caching available commands for session ${sessionId} (${commands.length})`
+              )
+              this.pendingAvailableCommands.set(sessionId, commands)
             }
           }
         }),
@@ -110,6 +130,7 @@ export class AgentProcessManager implements IAgentProcessManager {
         `[AgentProcessManager] Agent for session ${sessionId} exited (code: ${code}, signal: ${signal})`
       )
       this.sessions.delete(sessionId)
+      this.pendingAvailableCommands.delete(sessionId)
     })
 
     // Extract modes and models from ACP response (like Zed does)
@@ -124,9 +145,19 @@ export class AgentProcessManager implements IAgentProcessManager {
       agentSessionId: acpResult.sessionId,
       needsHistoryReplay: isResumed, // True when resuming, agent needs conversation context
       sessionModeState,
-      sessionModelState
+      sessionModelState,
+      availableCommands: [] // Will be populated by available_commands_update
     }
     this.sessions.set(sessionId, sessionAgent)
+
+    const pendingCommands = this.pendingAvailableCommands.get(sessionId)
+    if (pendingCommands) {
+      sessionAgent.availableCommands = pendingCommands
+      this.pendingAvailableCommands.delete(sessionId)
+      console.log(
+        `[AgentProcessManager] Applied cached available commands for session ${sessionId} (${pendingCommands.length})`
+      )
+    }
 
     return { connection, agentSessionId: acpResult.sessionId }
   }
@@ -142,6 +173,7 @@ export class AgentProcessManager implements IAgentProcessManager {
       )
       await sessionAgent.agentProcess.stop()
       this.sessions.delete(sessionId)
+      this.pendingAvailableCommands.delete(sessionId)
       console.log(`[AgentProcessManager] Session ${sessionId} agent stopped`)
     }
   }
@@ -175,6 +207,7 @@ export class AgentProcessManager implements IAgentProcessManager {
    */
   remove(sessionId: string): void {
     this.sessions.delete(sessionId)
+    this.pendingAvailableCommands.delete(sessionId)
   }
 
   /**

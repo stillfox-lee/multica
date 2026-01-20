@@ -11,15 +11,22 @@ import type {
   SessionModeId,
   ModelId
 } from '@agentclientprotocol/sdk'
+import type { AvailableCommand } from '@agentclientprotocol/sdk/dist/schema/types.gen'
 import type { ISessionStore } from './types'
 
 export interface AcpClientCallbacks {
-  onSessionUpdate?: (update: SessionNotification, sequenceNumber?: number) => void
+  onSessionUpdate?: (
+    update: SessionNotification,
+    multicaSessionId: string,
+    sequenceNumber?: number
+  ) => void
   onPermissionRequest?: (params: RequestPermissionRequest) => Promise<RequestPermissionResponse>
   /** Called when server sends a mode update notification */
   onModeUpdate?: (modeId: SessionModeId) => void
   /** Called when server sends a model update notification */
   onModelUpdate?: (modelId: ModelId) => void
+  /** Called when server sends available commands update */
+  onAvailableCommandsUpdate?: (commands: AvailableCommand[]) => void
 }
 
 export interface AcpClientFactoryOptions {
@@ -69,6 +76,13 @@ export function createAcpClient(sessionId: string, options: AcpClientFactoryOpti
             callbacks.onModeUpdate(modeUpdate.currentModeId)
           }
         }
+        // Handle available commands update notification
+        if (updateType === 'available_commands_update' && callbacks.onAvailableCommandsUpdate) {
+          const commandsUpdate = update as { availableCommands?: AvailableCommand[] }
+          if (commandsUpdate.availableCommands) {
+            callbacks.onAvailableCommandsUpdate(commandsUpdate.availableCommands)
+          }
+        }
       } else {
         console.log(`[ACP] raw update:`, params)
       }
@@ -84,9 +98,9 @@ export function createAcpClient(sessionId: string, options: AcpClientFactoryOpti
         }
       }
 
-      // Trigger UI callback with sequence number for ordering
+      // Trigger UI callback with Multica session ID and sequence number for ordering
       if (callbacks.onSessionUpdate) {
-        callbacks.onSessionUpdate(params, sequenceNumber)
+        callbacks.onSessionUpdate(params, sessionId, sequenceNumber)
       }
     },
 
