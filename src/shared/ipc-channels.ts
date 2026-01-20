@@ -13,12 +13,17 @@ export const IPC_CHANNELS = {
   SESSION_CREATE: 'session:create',
   SESSION_LIST: 'session:list',
   SESSION_GET: 'session:get',
-  SESSION_LOAD: 'session:load', // Load session without starting agent (lazy)
+  SESSION_LOAD: 'session:load', // Load session without starting agent
+  SESSION_START_AGENT: 'session:start-agent', // Start agent for a session
   SESSION_RESUME: 'session:resume',
   SESSION_DELETE: 'session:delete',
   SESSION_UPDATE: 'session:update',
   SESSION_SWITCH_AGENT: 'session:switch-agent',
   SESSION_META_UPDATED: 'session:meta-updated', // Push event when session metadata changes (e.g., agentSessionId)
+  SESSION_GET_MODES: 'session:get-modes', // Get current session's available modes
+  SESSION_GET_MODELS: 'session:get-models', // Get current session's available models
+  SESSION_SET_MODE: 'session:set-mode', // Set session mode
+  SESSION_SET_MODEL: 'session:set-model', // Set session model
 
   // Configuration
   CONFIG_GET: 'config:get',

@@ -6,7 +6,15 @@ import { ArrowUp, Square, Paperclip, X, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { AgentSelector } from './AgentSelector'
+import { ModeSelector } from './ModeSelector'
+import { ModelSelector } from './ModelSelector'
 import type { MessageContent, ImageContentItem } from '../../../shared/types/message'
+import type {
+  SessionModeState,
+  SessionModelState,
+  SessionModeId,
+  ModelId
+} from '../../../shared/types'
 
 interface MessageInputProps {
   onSend: (content: MessageContent) => void
@@ -20,6 +28,11 @@ interface MessageInputProps {
   isSwitchingAgent?: boolean
   directoryExists?: boolean
   onDeleteSession?: () => void
+  // Mode/Model props
+  sessionModeState?: SessionModeState | null
+  sessionModelState?: SessionModelState | null
+  onModeChange?: (modeId: SessionModeId) => void
+  onModelChange?: (modelId: ModelId) => void
 }
 
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024 // 10MB
@@ -65,7 +78,11 @@ export function MessageInput({
   onAgentChange,
   isSwitchingAgent = false,
   directoryExists,
-  onDeleteSession
+  onDeleteSession,
+  sessionModeState,
+  sessionModelState,
+  onModeChange,
+  onModelChange
 }: MessageInputProps) {
   const [value, setValue] = useState('')
   const [isComposing, setIsComposing] = useState(false)
@@ -271,7 +288,7 @@ export function MessageInput({
 
           {/* Bottom toolbar */}
           <div className="flex items-center justify-between pt-2">
-            {/* Left side: agent selector, folder, and image button */}
+            {/* Left side: agent selector, mode/model selectors, and image button */}
             <div className="flex items-center gap-1">
               {/* Agent selector */}
               {currentAgentId && onAgentChange && (
@@ -280,6 +297,24 @@ export function MessageInput({
                   onAgentChange={onAgentChange}
                   disabled={isProcessing}
                   isSwitching={isSwitchingAgent}
+                />
+              )}
+
+              {/* Mode selector (only shown if agent supports modes) */}
+              {sessionModeState && onModeChange && (
+                <ModeSelector
+                  modeState={sessionModeState}
+                  onModeChange={onModeChange}
+                  disabled={isProcessing}
+                />
+              )}
+
+              {/* Model selector (only shown if agent supports model selection) */}
+              {sessionModelState && onModelChange && (
+                <ModelSelector
+                  modelState={sessionModelState}
+                  onModelChange={onModelChange}
+                  disabled={isProcessing}
                 />
               )}
 

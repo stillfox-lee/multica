@@ -6,7 +6,11 @@ import type {
   AppConfig,
   MulticaSession,
   SessionData,
-  ListSessionsOptions
+  ListSessionsOptions,
+  SessionModeState,
+  SessionModelState,
+  SessionModeId,
+  ModelId
 } from './types'
 import type { MessageContent } from './types/message'
 
@@ -161,10 +165,17 @@ export interface ElectronAPI {
   listSessions(options?: ListSessionsOptions): Promise<MulticaSession[]>
   getSession(sessionId: string): Promise<SessionData | null>
   loadSession(sessionId: string): Promise<MulticaSession> // Load without starting agent
+  startSessionAgent(sessionId: string): Promise<MulticaSession> // Start agent for a session
   resumeSession(sessionId: string): Promise<MulticaSession>
   deleteSession(sessionId: string): Promise<{ success: boolean }>
   updateSession(sessionId: string, updates: Partial<MulticaSession>): Promise<MulticaSession>
   switchSessionAgent(sessionId: string, newAgentId: string): Promise<MulticaSession>
+
+  // Mode/Model management
+  getSessionModes(sessionId: string): Promise<SessionModeState | null>
+  getSessionModels(sessionId: string): Promise<SessionModelState | null>
+  setSessionMode(sessionId: string, modeId: SessionModeId): Promise<void>
+  setSessionModel(sessionId: string, modelId: ModelId): Promise<void>
 
   // Configuration
   getConfig(): Promise<AppConfig>

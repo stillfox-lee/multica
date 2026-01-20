@@ -62,7 +62,21 @@ export class AgentProcessManager implements IAgentProcessManager {
           sessionStore: this.sessionStore as any, // Cast to SessionStore for compatibility
           callbacks: {
             onSessionUpdate: this.events.onSessionUpdate,
-            onPermissionRequest: this.events.onPermissionRequest
+            onPermissionRequest: this.events.onPermissionRequest,
+            // Handle server-initiated mode updates
+            onModeUpdate: (modeId) => {
+              const sessionAgent = this.sessions.get(sessionId)
+              if (sessionAgent?.sessionModeState) {
+                sessionAgent.sessionModeState.currentModeId = modeId
+              }
+            },
+            // Handle server-initiated model updates
+            onModelUpdate: (modelId) => {
+              const sessionAgent = this.sessions.get(sessionId)
+              if (sessionAgent?.sessionModelState) {
+                sessionAgent.sessionModelState.currentModelId = modelId
+              }
+            }
           }
         }),
       stream
@@ -98,13 +112,19 @@ export class AgentProcessManager implements IAgentProcessManager {
       this.sessions.delete(sessionId)
     })
 
+    // Extract modes and models from ACP response (like Zed does)
+    const sessionModeState = acpResult.modes ?? null
+    const sessionModelState = acpResult.models ?? null
+
     // Store in sessions map
     const sessionAgent: SessionAgent = {
       agentProcess,
       connection,
       agentConfig: config,
       agentSessionId: acpResult.sessionId,
-      needsHistoryReplay: isResumed // True when resuming, agent needs conversation context
+      needsHistoryReplay: isResumed, // True when resuming, agent needs conversation context
+      sessionModeState,
+      sessionModelState
     }
     this.sessions.set(sessionId, sessionAgent)
 

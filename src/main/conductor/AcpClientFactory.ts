@@ -7,13 +7,19 @@ import type {
   Client,
   SessionNotification,
   RequestPermissionRequest,
-  RequestPermissionResponse
+  RequestPermissionResponse,
+  SessionModeId,
+  ModelId
 } from '@agentclientprotocol/sdk'
 import type { SessionStore } from '../session/SessionStore'
 
 export interface AcpClientCallbacks {
   onSessionUpdate?: (update: SessionNotification, sequenceNumber?: number) => void
   onPermissionRequest?: (params: RequestPermissionRequest) => Promise<RequestPermissionResponse>
+  /** Called when server sends a mode update notification */
+  onModeUpdate?: (modeId: SessionModeId) => void
+  /** Called when server sends a model update notification */
+  onModelUpdate?: (modelId: ModelId) => void
 }
 
 export interface AcpClientFactoryOptions {
@@ -55,6 +61,13 @@ export function createAcpClient(sessionId: string, options: AcpClientFactoryOpti
         } else {
           // Log other types briefly
           console.log(`[ACP] ${updateType}`)
+        }
+        // Handle mode update notification
+        if (updateType === 'current_mode_update' && callbacks.onModeUpdate) {
+          const modeUpdate = update as { currentModeId?: SessionModeId }
+          if (modeUpdate.currentModeId) {
+            callbacks.onModeUpdate(modeUpdate.currentModeId)
+          }
         }
       } else {
         console.log(`[ACP] raw update:`, params)

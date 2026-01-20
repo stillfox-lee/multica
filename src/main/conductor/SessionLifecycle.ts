@@ -6,7 +6,7 @@
  * - Loading and resuming sessions
  * - Deleting sessions
  * - Switching session agents
- * - Ensuring agents are running (lazy-start)
+ * - Starting agents for sessions (immediate or on-demand)
  */
 import { DEFAULT_AGENTS } from '../config/defaults'
 import type {
@@ -51,15 +51,15 @@ export class SessionLifecycle implements ISessionLifecycle {
   }
 
   /**
-   * Create a new session (agent starts lazily on first prompt)
+   * Create a new session (agent starts immediately)
    */
   async create(cwd: string, agentConfig: AgentConfig): Promise<MulticaSession> {
     let session: MulticaSession
 
     if (this.sessionStore) {
-      // Create session record - agent will be started lazily via ensureAgentForSession
+      // Create session record
       session = await this.sessionStore.create({
-        agentSessionId: '', // Will be filled by ensureAgentForSession on first prompt
+        agentSessionId: '', // Will be filled after agent start
         agentId: agentConfig.id,
         workingDirectory: cwd
       })
@@ -80,8 +80,26 @@ export class SessionLifecycle implements ISessionLifecycle {
       this.inMemorySession = session
     }
 
-    // Agent will be started lazily when user sends first prompt
-    console.log(`[SessionLifecycle] Created session: ${session.id} (agent: pending)`)
+    // Start agent immediately (isResumed = false for new session)
+    const { agentSessionId } = await this.agentProcessManager.start(
+      session.id,
+      agentConfig,
+      cwd,
+      false
+    )
+
+    // Update session with agentSessionId
+    if (this.sessionStore) {
+      session = await this.sessionStore.updateMeta(session.id, {
+        agentSessionId,
+        status: 'active'
+      })
+    } else {
+      session.agentSessionId = agentSessionId
+      this.inMemorySession = session
+    }
+
+    console.log(`[SessionLifecycle] Created session: ${session.id} (agent: ${agentSessionId})`)
 
     return session
   }
@@ -172,6 +190,61 @@ export class SessionLifecycle implements ISessionLifecycle {
       throw new Error('Session update not available in CLI mode')
     }
     return this.sessionStore.updateMeta(sessionId, updates)
+  }
+
+  /**
+   * Start agent for a session (if not already running)
+   * Used when selecting historical sessions to ensure agent is running
+   */
+  async startAgent(sessionId: string): Promise<MulticaSession> {
+    // If already running, return current session
+    if (this.agentProcessManager.get(sessionId)) {
+      const data = await this.sessionStore!.get(sessionId)
+      return data!.session
+    }
+
+    if (!this.sessionStore) {
+      throw new Error('Session start not available in CLI mode')
+    }
+
+    // Load session
+    const data = await this.sessionStore.get(sessionId)
+    if (!data) {
+      throw new Error(`Session not found: ${sessionId}`)
+    }
+
+    // Get agent config
+    const agentConfig = DEFAULT_AGENTS[data.session.agentId]
+    if (!agentConfig) {
+      throw new Error(`Unknown agent: ${data.session.agentId}`)
+    }
+
+    console.log(`[SessionLifecycle] Starting agent for session ${sessionId}`)
+
+    // Start agent (isResumed = true for history replay)
+    const { agentSessionId } = await this.agentProcessManager.start(
+      sessionId,
+      agentConfig,
+      data.session.workingDirectory,
+      true
+    )
+
+    // Update session with new agentSessionId
+    const updatedSession = await this.sessionStore.updateMeta(sessionId, {
+      agentSessionId,
+      status: 'active'
+    })
+
+    // Notify frontend
+    if (this.events.onSessionMetaUpdated) {
+      this.events.onSessionMetaUpdated(updatedSession)
+    }
+
+    console.log(
+      `[SessionLifecycle] Started agent for session: ${sessionId} (agent session: ${agentSessionId})`
+    )
+
+    return updatedSession
   }
 
   /**

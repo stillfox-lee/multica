@@ -112,10 +112,18 @@ export class Conductor {
   }
 
   /**
-   * Load a session without starting its agent (lazy loading)
+   * Load a session without starting its agent
    */
   async loadSession(sessionId: string): Promise<MulticaSession> {
     return this.sessionLifecycle.load(sessionId)
+  }
+
+  /**
+   * Start agent for a session (if not already running)
+   * Used when selecting historical sessions to ensure agent is running
+   */
+  async startSessionAgent(sessionId: string): Promise<MulticaSession> {
+    return this.sessionLifecycle.startAgent(sessionId)
   }
 
   /**
@@ -177,8 +185,15 @@ export class Conductor {
   /**
    * Get agent config for a session
    */
-  getSessionAgent(sessionId: string): AgentConfig | null {
+  getSessionAgentConfig(sessionId: string): AgentConfig | null {
     return this.agentProcessManager.getAgentConfig(sessionId)
+  }
+
+  /**
+   * Get full session agent state (for accessing mode/model state)
+   */
+  getSessionAgent(sessionId: string): import('./types').SessionAgent | undefined {
+    return this.agentProcessManager.get(sessionId)
   }
 
   /**

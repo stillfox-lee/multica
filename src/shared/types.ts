@@ -81,3 +81,7 @@ export interface FileApprovalResponse {
 
 // Re-export session types
 export * from './types/session'
+
+// Re-export mode/model types from ACP SDK for frontend use
+export * from './types/mode'
+export * from './types/model'

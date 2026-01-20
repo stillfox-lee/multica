@@ -27,6 +27,8 @@ function AppContent(): React.JSX.Element {
     runningSessionsStatus,
     isProcessing,
     isInitializing,
+    sessionModeState,
+    sessionModelState,
     isSwitchingAgent,
 
     // Actions
@@ -36,7 +38,9 @@ function AppContent(): React.JSX.Element {
     clearCurrentSession,
     sendPrompt,
     cancelRequest,
-    switchSessionAgent
+    switchSessionAgent,
+    setSessionMode,
+    setSessionModel
   } = useApp()
 
   // UI state
@@ -154,7 +158,7 @@ function AppContent(): React.JSX.Element {
           <div className="relative flex-1 overflow-hidden flex flex-col">
             {/* Chat scroll area - only messages */}
             <div ref={containerRef} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4">
-              <div className="mx-auto max-w-3xl pb-12 px-8">
+              <div className="mx-auto max-w-3xl pb-12 px-8 min-h-full flex flex-col">
                 <ChatView
                   updates={sessionUpdates}
                   isProcessing={isProcessing}
@@ -201,6 +205,10 @@ function AppContent(): React.JSX.Element {
                   isSwitchingAgent={isSwitchingAgent}
                   directoryExists={currentSession?.directoryExists}
                   onDeleteSession={handleDeleteCurrentSession}
+                  sessionModeState={sessionModeState}
+                  sessionModelState={sessionModelState}
+                  onModeChange={setSessionMode}
+                  onModelChange={setSessionModel}
                 />
               </div>
             </div>
