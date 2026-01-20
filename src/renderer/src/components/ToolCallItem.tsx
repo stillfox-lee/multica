@@ -67,6 +67,14 @@ function formatPath(path: string | undefined): string | undefined {
   return parts[parts.length - 1]
 }
 
+// Format command (handle array format)
+function formatCommand(command: unknown): string {
+  if (Array.isArray(command)) {
+    return command.join(' ')
+  }
+  return String(command || '')
+}
+
 // Get tool display info (icon + name + subtitle + stats)
 function getDisplayInfo(toolCall: ToolCall): {
   icon: ReactNode
@@ -116,7 +124,7 @@ function getDisplayInfo(toolCall: ToolCall): {
       return {
         icon: <Terminal className={iconClass} />,
         name: 'Terminal',
-        subtitle: (input.description as string) || (input.command as string)?.slice(0, 50),
+        subtitle: (input.description as string) || formatCommand(input.command).slice(0, 50),
         stats: isPending ? 'running...' : undefined
       }
     }
