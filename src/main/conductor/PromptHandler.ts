@@ -174,12 +174,14 @@ export class PromptHandler implements IPromptHandler {
           _internal: options?.internal ?? false // G-3: internal messages not shown in UI
         }
       }
-      await this.sessionStore.appendUpdate(sessionId, userUpdate as any)
+      await this.sessionStore.appendUpdate(sessionId, userUpdate as unknown as SessionNotification)
     }
 
     try {
+      // Cast promptContent to satisfy ACP SDK types - our MessageContentItem maps to ContentBlock
       const result = await connection.prompt({
         sessionId: agentSessionId,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- ACP SDK types don't match our MessageContentItem
         prompt: promptContent as any
       })
 
